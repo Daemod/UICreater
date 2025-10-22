@@ -1,0 +1,152 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Генератор кнопок</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link id="font-loader" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" crossorigin="anonymous">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app">
+    <section class="panel controls">
+      <h1>Генератор кнопок</h1>
+      <form class="control-form" autocomplete="off">
+        <label class="field">
+          <span>Текст на кнопке</span>
+          <input id="buttonText" type="text" placeholder="Введите текст" value="Заказать">
+        </label>
+
+        <div class="field two-columns">
+          <label>
+            <span>Ширина (px)</span>
+            <input id="widthInput" type="number" value="176">
+          </label>
+          <label>
+            <span>Высота (px)</span>
+            <input id="heightInput" type="number" value="48">
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Скругление (px)</span>
+          <input id="radiusInput" type="number" min="0" max="120" value="6">
+        </label>
+
+        <label class="field">
+          <span>Шрифт</span>
+          <select id="fontSelect">
+            <option value="Inter" selected>Inter</option>
+            <option value="Roboto">Roboto</option>
+            <option value="Montserrat">Montserrat</option>
+            <option value="Poppins">Poppins</option>
+            <option value="Cormorant Unicase">Cormorant Unicase</option>
+            <option value="custom">Другой...</option>
+          </select>
+        </label>
+
+        <div id="customFontWrapper" class="field hidden">
+          <span>Название шрифта</span>
+          <input id="customFontName" type="text" placeholder="Например, Manrope">
+        </div>
+
+        <label class="field">
+          <span>Размер шрифта (px)</span>
+          <input id="fontSizeInput" type="number" min="8" max="120" value="16">
+        </label>
+
+        <div class="field two-columns">
+          <label>
+            <span>Горизонтальное выравнивание</span>
+            <select id="alignHorizontal">
+              <option value="flex-start">Слева</option>
+              <option value="center" selected>По центру</option>
+              <option value="flex-end">Справа</option>
+            </select>
+          </label>
+          <label>
+            <span>Вертикальное выравнивание</span>
+            <select id="alignVertical">
+              <option value="flex-start">Сверху</option>
+              <option value="center" selected>По центру</option>
+              <option value="flex-end">Снизу</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="field">
+          <span>Цвета состояний</span>
+          <div class="color-grid">
+            <label class="field color-field">
+              <span>Normal</span>
+              <input id="colorNormal" type="color" value="#c83a26" aria-label="Цвет нормального состояния">
+            </label>
+            <label class="field color-field">
+              <span>Hover</span>
+              <input id="colorHover" type="color" value="#d64530" aria-label="Цвет при наведении">
+            </label>
+            <label class="field color-field">
+              <span>Active</span>
+              <input id="colorActive" type="color" value="#7a0e06" aria-label="Цвет при нажатии">
+            </label>
+            <label class="field color-field">
+              <span>Текст</span>
+              <input id="colorText" type="color" value="#ffffff" aria-label="Цвет текста">
+            </label>
+          </div>
+        </div>
+
+        <div class="field">
+          <span>Шум и текстура</span>
+          <div class="noise-controls">
+            <label class="field">
+              <span>Цвет шума</span>
+              <input id="colorNoise" type="color" value="#ffffff" aria-label="Цвет шумового слоя">
+            </label>
+            <label class="field">
+              <span>Интенсивность</span>
+              <input id="noiseAmount" type="range" min="0" max="100" value="35">
+            </label>
+            <label class="field">
+              <span>Режим смешивания</span>
+              <select id="noiseBlend">
+                <option value="overlay" selected>Overlay</option>
+                <option value="soft-light">Soft light</option>
+                <option value="screen">Screen</option>
+                <option value="multiply">Multiply</option>
+              </select>
+            </label>
+            <button type="button" class="noise-refresh" id="noiseRefresh">Обновить шум</button>
+          </div>
+        </div>
+      </form>
+    </section>
+    <section class="panel preview">
+      <div class="preview-header">
+        <span>Предпросмотр</span>
+        <div class="preview-state">
+          <button type="button" class="state-btn active" data-preview-state="normal">Normal</button>
+          <button type="button" class="state-btn" data-preview-state="hover">Hover</button>
+          <button type="button" class="state-btn" data-preview-state="active">Active</button>
+        </div>
+      </div>
+      <div class="preview-stage">
+        <button id="previewButton" class="preview-button state-normal" type="button">
+          <span class="preview-button__gloss" aria-hidden="true" data-role="gloss-layer"></span>
+          <span class="preview-button__noise" aria-hidden="true" data-role="noise-layer"></span>
+          <span data-role="preview-label">Заказать</span>
+        </button>
+      </div>
+      <div class="save-buttons">
+        <button type="button" class="save-btn" data-save-state="normal">Скачать Normal</button>
+        <button type="button" class="save-btn" data-save-state="hover">Скачать Hover</button>
+        <button type="button" class="save-btn" data-save-state="active">Скачать Active</button>
+      </div>
+    </section>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/dom-to-image-more@2.8.0/dist/dom-to-image-more.min.js" integrity="sha256-SWiKkXQIRpzbpHAKgzvEE/LefY3As3O7OH79qVhxRV4=" crossorigin="anonymous"></script>
+  <script src="app.js"></script>
+</body>
+</html>
+
