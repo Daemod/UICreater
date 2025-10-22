@@ -9,9 +9,18 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <main class="app">
-    <section class="panel controls">
-      <h1>Генератор кнопок</h1>
+  <div class="app-shell">
+    <header class="top-bar">
+      <div class="brand">UI Creater</div>
+      <nav class="tool-switcher" aria-label="Выбор инструмента">
+        <button class="tool-tab active" type="button" data-tool-target="button">Генератор кнопок</button>
+        <button class="tool-tab" type="button" data-tool-target="label">Генератор надписей</button>
+      </nav>
+    </header>
+
+    <section class="app" data-tool="button">
+      <section class="panel controls">
+        <h1>Генератор кнопок</h1>
       <form class="control-form" autocomplete="off">
         <label class="field">
           <span>Текст на кнопке</span>
@@ -121,30 +130,143 @@
           </div>
         </div>
       </form>
-    </section>
-    <section class="panel preview">
-      <div class="preview-header">
-        <span>Предпросмотр</span>
-        <div class="preview-state">
-          <button type="button" class="state-btn active" data-preview-state="normal">Normal</button>
-          <button type="button" class="state-btn" data-preview-state="hover">Hover</button>
-          <button type="button" class="state-btn" data-preview-state="active">Active</button>
+      </section>
+      <section class="panel preview">
+        <div class="preview-header">
+          <span>Предпросмотр</span>
+          <div class="preview-state">
+            <button type="button" class="state-btn active" data-preview-state="normal">Normal</button>
+            <button type="button" class="state-btn" data-preview-state="hover">Hover</button>
+            <button type="button" class="state-btn" data-preview-state="active">Active</button>
+          </div>
         </div>
-      </div>
-      <div class="preview-stage">
-        <button id="previewButton" class="preview-button state-normal" type="button">
-          <span class="preview-button__gloss" aria-hidden="true" data-role="gloss-layer"></span>
-          <span class="preview-button__noise" aria-hidden="true" data-role="noise-layer"></span>
-          <span data-role="preview-label">Заказать</span>
-        </button>
-      </div>
-      <div class="save-buttons">
-        <button type="button" class="save-btn" data-save-state="normal">Скачать Normal</button>
-        <button type="button" class="save-btn" data-save-state="hover">Скачать Hover</button>
-        <button type="button" class="save-btn" data-save-state="active">Скачать Active</button>
-      </div>
+        <div class="preview-stage">
+          <button id="previewButton" class="preview-button state-normal" type="button">
+            <span class="preview-button__gloss" aria-hidden="true" data-role="gloss-layer"></span>
+            <span class="preview-button__noise" aria-hidden="true" data-role="noise-layer"></span>
+            <span data-role="preview-label">Заказать</span>
+          </button>
+        </div>
+        <div class="save-buttons">
+          <button type="button" class="save-btn" data-save-state="normal">Скачать Normal</button>
+          <button type="button" class="save-btn" data-save-state="hover">Скачать Hover</button>
+          <button type="button" class="save-btn" data-save-state="active">Скачать Active</button>
+        </div>
+      </section>
     </section>
-  </main>
+
+    <section class="app hidden" data-tool="label">
+      <section class="panel controls">
+        <h1>Генератор надписей</h1>
+        <form class="control-form" autocomplete="off">
+          <label class="field">
+            <span>Текст надписи</span>
+            <input id="labelText" type="text" placeholder="Введите текст" value="Chúc">
+          </label>
+
+          <label class="field">
+            <span>Шрифт</span>
+            <select id="labelFontSelect">
+              <option value="Inter" selected>Inter</option>
+              <option value="Roboto">Roboto</option>
+              <option value="Montserrat">Montserrat</option>
+              <option value="Poppins">Poppins</option>
+              <option value="Cormorant Unicase">Cormorant Unicase</option>
+              <option value="custom">Другой...</option>
+            </select>
+          </label>
+
+          <div id="labelCustomFontWrapper" class="field hidden">
+            <span>Название шрифта</span>
+            <input id="labelCustomFontName" type="text" placeholder="Например, Manrope">
+          </div>
+
+          <label class="field">
+            <span>Размер шрифта (px)</span>
+            <input id="labelFontSize" type="number" min="16" max="220" value="104">
+          </label>
+
+          <div class="field effect-block">
+            <label class="effect-toggle">
+              <input id="labelStrokeToggle" type="checkbox" checked>
+              <span>Включить обводку</span>
+            </label>
+            <div class="two-columns">
+              <label>
+                <span>Толщина (px)</span>
+                <input id="labelStrokeWidth" type="number" min="0" max="24" value="4">
+              </label>
+              <label>
+                <span>Цвет</span>
+                <input id="labelStrokeColor" type="color" value="#2b0505">
+              </label>
+            </div>
+          </div>
+
+          <div class="field effect-block">
+            <label class="effect-toggle">
+              <input id="labelGradientToggle" type="checkbox" checked>
+              <span>Включить градиент</span>
+            </label>
+            <div class="two-columns">
+              <label>
+                <span>Начальный цвет</span>
+                <input id="labelGradientStart" type="color" value="#ffcc5f">
+              </label>
+              <label>
+                <span>Конечный цвет</span>
+                <input id="labelGradientEnd" type="color" value="#7a2100">
+              </label>
+            </div>
+            <label class="field">
+              <span>Угол градиента (°)</span>
+              <input id="labelGradientAngle" type="number" min="0" max="360" value="90">
+            </label>
+            <label class="field">
+              <span>Цвет текста без градиента</span>
+              <input id="labelSolidColor" type="color" value="#ffbb4a">
+            </label>
+          </div>
+
+          <div class="field">
+            <span>Тень</span>
+            <div class="two-columns">
+              <label>
+                <span>Смещение X (px)</span>
+                <input id="labelShadowX" type="number" value="2">
+              </label>
+              <label>
+                <span>Смещение Y (px)</span>
+                <input id="labelShadowY" type="number" value="4">
+              </label>
+            </div>
+            <div class="two-columns">
+              <label>
+                <span>Размытие (px)</span>
+                <input id="labelShadowBlur" type="number" min="0" max="60" value="12">
+              </label>
+              <label>
+                <span>Цвет</span>
+                <input id="labelShadowColor" type="color" value="#160400">
+              </label>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel preview">
+        <div class="preview-header label-header">
+          <span>Предпросмотр</span>
+          <button type="button" class="save-btn" id="labelDownload">Скачать PNG</button>
+        </div>
+        <div class="preview-stage label-preview-stage">
+          <div class="label-preview-wrapper" id="labelPreviewWrapper">
+            <div id="labelPreview" class="label-preview" role="img" aria-label="Chúc">Chúc</div>
+          </div>
+        </div>
+      </section>
+    </section>
+  </div>
   <script src="https://cdn.jsdelivr.net/npm/dom-to-image-more@2.8.0/dist/dom-to-image-more.min.js" integrity="sha256-SWiKkXQIRpzbpHAKgzvEE/LefY3As3O7OH79qVhxRV4=" crossorigin="anonymous"></script>
   <script src="app.js"></script>
 </body>

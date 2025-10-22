@@ -1,35 +1,7 @@
-﻿(() => {
-  const previewButton = document.getElementById("previewButton");
-  const previewLabel = previewButton.querySelector('[data-role="preview-label"]');
-  const glossLayer = previewButton.querySelector('[data-role="gloss-layer"]');
-  const noiseLayer = previewButton.querySelector('[data-role="noise-layer"]');
-  const buttonTextInput = document.getElementById("buttonText");
-  const widthInput = document.getElementById("widthInput");
-  const heightInput = document.getElementById("heightInput");
-  const radiusInput = document.getElementById("radiusInput");
-  const fontSelect = document.getElementById("fontSelect");
-  const fontSizeInput = document.getElementById("fontSizeInput");
-  const customFontWrapper = document.getElementById("customFontWrapper");
-  const customFontNameInput = document.getElementById("customFontName");
-  const alignHorizontalSelect = document.getElementById("alignHorizontal");
-  const alignVerticalSelect = document.getElementById("alignVertical");
-  const stateButtons = document.querySelectorAll("[data-preview-state]");
-  const saveButtons = document.querySelectorAll("[data-save-state]");
+(() => {
+  const toolTabs = document.querySelectorAll("[data-tool-target]");
+  const toolViews = document.querySelectorAll("[data-tool]");
   const fontLoader = document.getElementById("font-loader");
-  const colorNormalInput = document.getElementById("colorNormal");
-  const colorHoverInput = document.getElementById("colorHover");
-  const colorActiveInput = document.getElementById("colorActive");
-  const colorTextInput = document.getElementById("colorText");
-  const colorNoiseInput = document.getElementById("colorNoise");
-  const noiseAmountInput = document.getElementById("noiseAmount");
-  const noiseBlendSelect = document.getElementById("noiseBlend");
-  const noiseRefreshButton = document.getElementById("noiseRefresh");
-
-  const STATES = ["normal", "hover", "active"];
-  let currentState = "normal";
-  let noiseDataUrl = "";
-  let currentFontFamily = "Inter";
-  let currentFontSize = Number(fontSizeInput.value) || 16;
 
   const exportHost = document.createElement("div");
   exportHost.style.position = "fixed";
@@ -39,20 +11,10 @@
   exportHost.style.zIndex = "-1";
   document.body.appendChild(exportHost);
 
-  function getCurrentFontWeight() {
-    const weight = window.getComputedStyle(previewButton).fontWeight;
+  function getCurrentFontWeight(element) {
+    if (!element) return "400";
+    const weight = window.getComputedStyle(element).fontWeight;
     return /^\d+$/.test(weight) ? weight : "400";
-  }
-
-  async function ensureFontReady() {
-    if (!document.fonts || !currentFontFamily) return;
-    const weight = getCurrentFontWeight();
-    try {
-      await document.fonts.load(weight + " " + currentFontSize + "px '" + currentFontFamily + "'");
-    } catch {
-      // ignore, fallback to immediate render
-    }
-
   }
 
   function normaliseHex(input, fallback = "#ffffff") {
@@ -156,6 +118,172 @@
     return hslToHex(h, s, l + delta);
   }
 
+  function clamp(value, min, max, fallback) {
+    if (Number.isNaN(value)) return fallback;
+    return Math.min(Math.max(value, min), max);
+  }
+
+  function normalizeDimension(value, fallback) {
+    const trimmed = String(value ?? "").trim();
+    if (!trimmed) return fallback;
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) return fallback;
+    return parsed;
+  }
+
+  function waitForNextFrame() {
+    return new Promise((resolve) => requestAnimationFrame(resolve));
+  }
+
+  async function waitForFonts() {
+    if (document.fonts && typeof document.fonts.ready === "object") {
+      try {
+        await document.fonts.ready;
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  async function ensureFontReady(element, family, size) {
+    if (!document.fonts || !family) return;
+    const target = element || document.body;
+    const resolvedSize = size || parseInt(window.getComputedStyle(target).fontSize, 10) || 16;
+    const weight = getCurrentFontWeight(target);
+    try {
+      await document.fonts.load(weight + " " + resolvedSize + "px '" + family + "'");
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const fontCssCache = new Map();
+
+  function buildFontHref(fontName) {
+    const familyQuery = fontName.replace(/\s+/g, "+");
+    return "https://fonts.googleapis.com/css2?family=" + familyQuery + ":wght@400;500;600;700&display=swap";
+  }
+
+  function applyFontFamilyToPreview(fontName, previewElement, state) {
+    const trimmedName = (fontName || "").trim();
+    if (!trimmedName || !previewElement) return;
+    const href = buildFontHref(trimmedName);
+    if (fontLoader && fontLoader.href !== href) {
+      fontLoader.href = href;
+      fontLoader.setAttribute("crossorigin", "anonymous");
+    }
+    previewElement.style.fontFamily = "'" + trimmedName + "', sans-serif";
+    if (state) {
+      state.family = trimmedName;
+    }
+    ensureFontReady(previewElement, trimmedName, state ? state.size : undefined);
+  }
+
+  async function getInlineFontCss() {
+    const href = fontLoader ? fontLoader.href : "";
+    if (!href) return "";
+
+    if (fontCssCache.has(href)) {
+      return fontCssCache.get(href);
+    }
+
+    try {
+      const response = await fetch(href, { cache: "force-cache" });
+      if (!response.ok) {
+        throw new Error("Failed to fetch font CSS");
+      }
+      let cssText = await response.text();
+      const urlRegex = /url\(([^)]+)\)/g;
+      const urls = new Set();
+      let match;
+      while ((match = urlRegex.exec(cssText))) {
+        const rawUrl = match[1].trim().replace(/^['"]|['"]$/g, "");
+        urls.add(rawUrl);
+      }
+
+      for (const url of urls) {
+        try {
+          const fontResponse = await fetch(url, { cache: "force-cache" });
+          if (!fontResponse.ok) continue;
+          const fontBlob = await fontResponse.blob();
+          const dataUrl = await blobToDataUrl(fontBlob);
+          const escapedUrl = url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          cssText = cssText.replace(new RegExp(escapedUrl, "g"), dataUrl);
+        } catch (error) {
+          console.warn("Не удалось встроить шрифт:", error);
+        }
+      }
+
+      fontCssCache.set(href, cssText);
+      return cssText;
+    } catch (error) {
+      console.warn("Не удалось получить CSS шрифта:", error);
+      fontCssCache.set(href, "");
+      return "";
+    }
+  }
+
+  async function appendFontStyles(wrapper) {
+    const cssText = await getInlineFontCss();
+    if (!cssText) return;
+    const style = document.createElement("style");
+    style.textContent = cssText;
+    wrapper.insertBefore(style, wrapper.firstChild);
+  }
+
+  function blobToDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  function sanitiseFileName(base, suffix) {
+    const trimmed = (base || "").trim().toLowerCase();
+    const latinised = trimmed
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9\-_.]/g, "");
+    const safeBase = latinised || "asset";
+    return safeBase + "-" + suffix + ".png";
+  }
+
+  // Button generator elements
+  const previewButton = document.getElementById("previewButton");
+  const previewLabel = previewButton?.querySelector('[data-role="preview-label"]');
+  const glossLayer = previewButton?.querySelector('[data-role="gloss-layer"]');
+  const noiseLayer = previewButton?.querySelector('[data-role="noise-layer"]');
+  const buttonTextInput = document.getElementById("buttonText");
+  const widthInput = document.getElementById("widthInput");
+  const heightInput = document.getElementById("heightInput");
+  const radiusInput = document.getElementById("radiusInput");
+  const fontSelect = document.getElementById("fontSelect");
+  const fontSizeInput = document.getElementById("fontSizeInput");
+  const customFontWrapper = document.getElementById("customFontWrapper");
+  const customFontNameInput = document.getElementById("customFontName");
+  const alignHorizontalSelect = document.getElementById("alignHorizontal");
+  const alignVerticalSelect = document.getElementById("alignVertical");
+  const stateButtons = document.querySelectorAll("[data-preview-state]");
+  const saveButtons = document.querySelectorAll("[data-save-state]");
+  const colorNormalInput = document.getElementById("colorNormal");
+  const colorHoverInput = document.getElementById("colorHover");
+  const colorActiveInput = document.getElementById("colorActive");
+  const colorTextInput = document.getElementById("colorText");
+  const colorNoiseInput = document.getElementById("colorNoise");
+  const noiseAmountInput = document.getElementById("noiseAmount");
+  const noiseBlendSelect = document.getElementById("noiseBlend");
+  const noiseRefreshButton = document.getElementById("noiseRefresh");
+
+  const STATES = ["normal", "hover", "active"];
+  let currentButtonState = "normal";
+  let noiseDataUrl = "";
+
+  const buttonFontState = {
+    family: "Inter",
+    size: Number(fontSizeInput?.value) || 16,
+  };
+
   function applyStateColors(baseColor, state) {
     const normalised = normaliseHex(baseColor);
     const top = adjustLightness(normalised, 12);
@@ -222,7 +350,7 @@
 
   function setPreviewState(state) {
     if (!STATES.includes(state)) return;
-    currentState = state;
+    currentButtonState = state;
     previewButton.classList.remove(...STATES.map((s) => "state-" + s));
     previewButton.classList.add("state-" + state);
     stateButtons.forEach((button) => {
@@ -239,19 +367,6 @@
       previewButton.textContent = labelText;
     }
     previewButton.setAttribute("aria-label", labelText);
-  }
-
-  function clamp(value, min, max, fallback) {
-    if (Number.isNaN(value)) return fallback;
-    return Math.min(Math.max(value, min), max);
-  }
-
-  function normalizeDimension(value, fallback) {
-    const trimmed = String(value ?? "").trim();
-    if (!trimmed) return fallback;
-    const parsed = Number(trimmed);
-    if (!Number.isFinite(parsed)) return fallback;
-    return parsed;
   }
 
   function updateButtonSize() {
@@ -294,19 +409,12 @@
     const size = clamp(parseInt(fontSizeInput.value, 10), 8, 120, 16);
     fontSizeInput.value = size;
     previewButton.style.fontSize = size + "px";
-    currentFontSize = size;
-    ensureFontReady();
+    buttonFontState.size = size;
+    ensureFontReady(previewButton, buttonFontState.family, size);
   }
 
-  function applyFontFamily(fontName) {
-    const trimmedName = (fontName || "").trim();
-    if (!trimmedName) return;
-    const familyQuery = trimmedName.replace(/\s+/g, "+");
-    fontLoader.href = "https://fonts.googleapis.com/css2?family=" + familyQuery + ":wght@400;500;600;700&display=swap";
-    fontLoader.setAttribute("crossorigin", "anonymous");
-    previewButton.style.fontFamily = "'" + trimmedName + "', sans-serif";
-    currentFontFamily = trimmedName;
-    ensureFontReady();
+  function applyButtonFont(fontName) {
+    applyFontFamilyToPreview(fontName, previewButton, buttonFontState);
   }
 
   function handleFontSelectChange() {
@@ -316,42 +424,19 @@
     if (isCustom) {
       customFontNameInput.focus();
     } else {
-      applyFontFamily(value);
+      applyButtonFont(value);
     }
   }
 
   function updateCustomFont() {
     const name = customFontNameInput.value.trim();
     if (name) {
-      applyFontFamily(name);
+      applyButtonFont(name);
     }
   }
 
-  function sanitiseFileName(base, state) {
-    const trimmed = (base || "").trim().toLowerCase();
-    const latinised = trimmed
-      .replace(/\s+/g, "-")
-      .replace(/[^a-z0-9\-_.]/g, "");
-    const safeBase = latinised || "button";
-    return safeBase + "-" + state + ".png";
-  }
-
-  function waitForNextFrame() {
-    return new Promise((resolve) => requestAnimationFrame(resolve));
-  }
-
-  async function waitForFonts() {
-    if (document.fonts && typeof document.fonts.ready === "object") {
-      try {
-        await document.fonts.ready;
-      } catch {
-        // ignore, fallback to immediate render
-      }
-    }
-  }
-
-  function copyComputedFontStyles(target) {
-    const computed = window.getComputedStyle(previewButton);
+  function copyComputedFontStyles(source, target) {
+    const computed = window.getComputedStyle(source);
     target.style.fontFamily = computed.fontFamily;
     target.style.fontSize = computed.fontSize;
     target.style.fontWeight = computed.fontWeight;
@@ -368,76 +453,13 @@
     }
   }
 
-  const fontCssCache = new Map();
-
-  function blobToDataUrl(blob) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  }
-
-  async function getInlineFontCss() {
-    const href = fontLoader ? fontLoader.href : "";
-    if (!href) return "";
-
-    if (fontCssCache.has(href)) {
-      return fontCssCache.get(href);
-    }
-
-    try {
-      const response = await fetch(href, { cache: "force-cache" });
-      if (!response.ok) {
-        throw new Error("Failed to fetch font CSS");
-      }
-      let cssText = await response.text();
-      const urlRegex = /url\(([^)]+)\)/g;
-      const urls = new Set();
-      let match;
-      while ((match = urlRegex.exec(cssText))) {
-        const rawUrl = match[1].trim().replace(/^['"]|['"]$/g, "");
-        if (/^https?:/i.test(rawUrl)) {
-          urls.add(rawUrl);
-        }
-      }
-
-      for (const url of urls) {
-        try {
-          const fontResponse = await fetch(url, { cache: "force-cache" });
-          if (!fontResponse.ok) continue;
-          const fontBlob = await fontResponse.blob();
-          const dataUrl = await blobToDataUrl(fontBlob);
-          const escapedUrl = url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          cssText = cssText.replace(new RegExp(escapedUrl, "g"), dataUrl);
-        } catch (error) {
-          console.warn("Не удалось встроить шрифт:", error);
-        }
-      }
-
-      fontCssCache.set(href, cssText);
-      return cssText;
-    } catch (error) {
-      console.warn("Не удалось получить CSS шрифта:", error);
-      fontCssCache.set(href, "");
-      return "";
-    }
-  }
-
-  async function appendFontStyles(wrapper) {
-    const cssText = await getInlineFontCss();
-    if (!cssText) return;
-    const style = document.createElement("style");
-    style.textContent = cssText;
-    wrapper.insertBefore(style, wrapper.firstChild);
-  }
-
   async function downloadState(state) {
     if (typeof domtoimage !== "object" || typeof domtoimage.toPng !== "function") {
       alert("Не удалось найти dom-to-image. Проверьте подключение библиотеки.");
       return;
     }
+
+    applyButtonFont(buttonFontState.family);
 
     const exportButton = previewButton.cloneNode(true);
     exportButton.removeAttribute("id");
@@ -447,7 +469,7 @@
     }
     exportButton.classList.remove(...STATES.map((s) => "state-" + s));
     exportButton.classList.add("state-" + state);
-    copyComputedFontStyles(exportButton);
+    copyComputedFontStyles(previewButton, exportButton);
 
     const exportGloss = exportButton.querySelector('[data-role="gloss-layer"]');
     if (exportGloss && glossLayer) {
@@ -467,7 +489,7 @@
     exportHost.appendChild(exportWrapper);
 
     await waitForFonts();
-    await ensureFontReady();
+    await ensureFontReady(previewButton, buttonFontState.family, buttonFontState.size);
     await appendFontStyles(exportWrapper);
     await waitForNextFrame();
 
@@ -489,29 +511,209 @@
     }
   }
 
-  buttonTextInput.addEventListener("input", updateButtonText);
-  widthInput.addEventListener("input", updateButtonSize);
-  heightInput.addEventListener("input", updateButtonSize);
-  radiusInput.addEventListener("input", updateButtonSize);
+  // Label generator elements
+  const labelPreview = document.getElementById("labelPreview");
+  const labelTextInput = document.getElementById("labelText");
+  const labelFontSelect = document.getElementById("labelFontSelect");
+  const labelCustomFontWrapper = document.getElementById("labelCustomFontWrapper");
+  const labelCustomFontNameInput = document.getElementById("labelCustomFontName");
+  const labelFontSizeInput = document.getElementById("labelFontSize");
+  const labelStrokeToggle = document.getElementById("labelStrokeToggle");
+  const labelStrokeWidthInput = document.getElementById("labelStrokeWidth");
+  const labelStrokeColorInput = document.getElementById("labelStrokeColor");
+  const labelGradientToggle = document.getElementById("labelGradientToggle");
+  const labelGradientStartInput = document.getElementById("labelGradientStart");
+  const labelGradientEndInput = document.getElementById("labelGradientEnd");
+  const labelGradientAngleInput = document.getElementById("labelGradientAngle");
+  const labelSolidColorInput = document.getElementById("labelSolidColor");
+  const labelShadowXInput = document.getElementById("labelShadowX");
+  const labelShadowYInput = document.getElementById("labelShadowY");
+  const labelShadowBlurInput = document.getElementById("labelShadowBlur");
+  const labelShadowColorInput = document.getElementById("labelShadowColor");
+  const labelDownloadButton = document.getElementById("labelDownload");
 
-  alignHorizontalSelect.addEventListener("change", updateAlignment);
-  alignVerticalSelect.addEventListener("change", updateAlignment);
+  const labelFontState = {
+    family: "Inter",
+    size: Number(labelFontSizeInput?.value) || 104,
+  };
 
-  fontSelect.addEventListener("change", handleFontSelectChange);
-  fontSizeInput.addEventListener("input", updateFontSize);
-  customFontNameInput.addEventListener("input", updateCustomFont);
+  function updateLabelText() {
+    const value = labelTextInput.value.trim() || "Надпись";
+    labelPreview.textContent = value;
+    labelPreview.setAttribute("aria-label", value);
+  }
 
-  colorNormalInput.addEventListener("input", () => {
-    applyColorEffects();
-    updateNoise(true);
-  });
-  colorHoverInput.addEventListener("input", applyColorEffects);
-  colorActiveInput.addEventListener("input", applyColorEffects);
-  colorTextInput.addEventListener("input", applyColorEffects);
-  colorNoiseInput.addEventListener("input", () => updateNoise(true));
-  noiseAmountInput.addEventListener("input", () => updateNoise(true));
-  noiseBlendSelect.addEventListener("change", () => updateNoise(false));
-  noiseRefreshButton.addEventListener("click", () => updateNoise(true));
+  function applyLabelFont(fontName) {
+    applyFontFamilyToPreview(fontName, labelPreview, labelFontState);
+  }
+
+  function handleLabelFontChange() {
+    const value = labelFontSelect.value;
+    const isCustom = value === "custom";
+    labelCustomFontWrapper.classList.toggle("hidden", !isCustom);
+    if (isCustom) {
+      labelCustomFontNameInput.focus();
+    } else {
+      applyLabelFont(value);
+    }
+  }
+
+  function updateLabelCustomFont() {
+    const name = labelCustomFontNameInput.value.trim();
+    if (name) {
+      applyLabelFont(name);
+    }
+  }
+
+  function updateLabelFontSize() {
+    const size = clamp(parseInt(labelFontSizeInput.value, 10), 16, 240, 104);
+    labelFontSizeInput.value = size;
+    labelPreview.style.fontSize = size + "px";
+    labelFontState.size = size;
+    ensureFontReady(labelPreview, labelFontState.family, size);
+  }
+
+  function updateLabelStroke() {
+    const enabled = labelStrokeToggle.checked;
+    const width = clamp(parseFloat(labelStrokeWidthInput.value), 0, 24, 0);
+    const color = normaliseHex(labelStrokeColorInput.value, "#000000");
+    labelStrokeWidthInput.value = width;
+    labelStrokeColorInput.value = color;
+
+    const strokeWidth = enabled ? width : 0;
+    labelPreview.style.webkitTextStrokeWidth = strokeWidth + "px";
+    labelPreview.style.webkitTextStrokeColor = color;
+    labelPreview.style.textStrokeWidth = strokeWidth + "px";
+    labelPreview.style.textStrokeColor = color;
+  }
+
+  function updateLabelGradient() {
+    const enabled = labelGradientToggle.checked;
+    const start = normaliseHex(labelGradientStartInput.value, "#ffcc5f");
+    const end = normaliseHex(labelGradientEndInput.value, "#7a2100");
+    const angle = clamp(parseInt(labelGradientAngleInput.value, 10), 0, 360, 90);
+    const solid = normaliseHex(labelSolidColorInput.value, "#ffffff");
+
+    labelGradientStartInput.value = start;
+    labelGradientEndInput.value = end;
+    labelGradientAngleInput.value = angle;
+    labelSolidColorInput.value = solid;
+
+    if (enabled) {
+      labelPreview.style.backgroundImage = "linear-gradient(" + angle + "deg, " + start + ", " + end + ")";
+      labelPreview.style.webkitTextFillColor = "transparent";
+      labelPreview.style.color = "transparent";
+    } else {
+      labelPreview.style.backgroundImage = "none";
+      labelPreview.style.webkitTextFillColor = solid;
+      labelPreview.style.color = solid;
+    }
+  }
+
+  function updateLabelShadow() {
+    const offsetX = parseFloat(labelShadowXInput.value) || 0;
+    const offsetY = parseFloat(labelShadowYInput.value) || 0;
+    const blur = clamp(parseFloat(labelShadowBlurInput.value), 0, 120, 12);
+    const color = normaliseHex(labelShadowColorInput.value, "#160400");
+
+    labelShadowBlurInput.value = blur;
+    labelShadowColorInput.value = color;
+    labelPreview.style.textShadow = offsetX + "px " + offsetY + "px " + blur + "px " + color;
+  }
+
+  async function downloadLabelImage() {
+    if (typeof domtoimage !== "object" || typeof domtoimage.toPng !== "function") {
+      alert("Не удалось найти dom-to-image. Проверьте подключение библиотеки.");
+      return;
+    }
+
+    applyLabelFont(labelFontState.family);
+
+    const exportLabel = labelPreview.cloneNode(true);
+    exportLabel.removeAttribute("id");
+    exportLabel.removeAttribute("role");
+
+    const exportWrapper = document.createElement("div");
+    exportWrapper.style.display = "inline-flex";
+    exportWrapper.style.alignItems = "center";
+    exportWrapper.style.justifyContent = "center";
+    exportWrapper.style.padding = "32px";
+    exportWrapper.style.background = "transparent";
+    exportWrapper.appendChild(exportLabel);
+    exportHost.appendChild(exportWrapper);
+
+    await waitForFonts();
+    await ensureFontReady(labelPreview, labelFontState.family, labelFontState.size);
+    await appendFontStyles(exportWrapper);
+    await waitForNextFrame();
+
+    try {
+      const dataUrl = await domtoimage.toPng(exportWrapper, {
+        cacheBust: true,
+        pixelRatio: 1,
+        bgcolor: "rgba(0,0,0,0)",
+      });
+      const link = document.createElement("a");
+      link.download = sanitiseFileName(labelTextInput.value, "label");
+      link.href = dataUrl;
+      link.click();
+    } catch (error) {
+      console.error("Не удалось сохранить надпись:", error);
+      alert("Не получилось сохранить изображение. Попробуйте ещё раз.");
+    } finally {
+      exportHost.removeChild(exportWrapper);
+    }
+  }
+
+  // Event bindings
+  if (buttonTextInput) {
+    buttonTextInput.addEventListener("input", updateButtonText);
+  }
+  if (widthInput && heightInput && radiusInput) {
+    widthInput.addEventListener("input", updateButtonSize);
+    heightInput.addEventListener("input", updateButtonSize);
+    radiusInput.addEventListener("input", updateButtonSize);
+  }
+  if (alignHorizontalSelect && alignVerticalSelect) {
+    alignHorizontalSelect.addEventListener("change", updateAlignment);
+    alignVerticalSelect.addEventListener("change", updateAlignment);
+  }
+  if (fontSelect) {
+    fontSelect.addEventListener("change", handleFontSelectChange);
+  }
+  if (fontSizeInput) {
+    fontSizeInput.addEventListener("input", updateFontSize);
+  }
+  if (customFontNameInput) {
+    customFontNameInput.addEventListener("input", updateCustomFont);
+  }
+  if (colorNormalInput) {
+    colorNormalInput.addEventListener("input", () => {
+      applyColorEffects();
+      updateNoise(true);
+    });
+  }
+  if (colorHoverInput) {
+    colorHoverInput.addEventListener("input", applyColorEffects);
+  }
+  if (colorActiveInput) {
+    colorActiveInput.addEventListener("input", applyColorEffects);
+  }
+  if (colorTextInput) {
+    colorTextInput.addEventListener("input", applyColorEffects);
+  }
+  if (colorNoiseInput) {
+    colorNoiseInput.addEventListener("input", () => updateNoise(true));
+  }
+  if (noiseAmountInput) {
+    noiseAmountInput.addEventListener("input", () => updateNoise(true));
+  }
+  if (noiseBlendSelect) {
+    noiseBlendSelect.addEventListener("change", () => updateNoise(false));
+  }
+  if (noiseRefreshButton) {
+    noiseRefreshButton.addEventListener("click", () => updateNoise(true));
+  }
 
   stateButtons.forEach((button) => {
     button.addEventListener("click", () => {
@@ -523,42 +725,99 @@
     button.addEventListener("click", () => downloadState(button.dataset.saveState));
   });
 
-  updateButtonText();
-  updateButtonSize();
-  updateAlignment();
-  updateFontSize();
-  applyFontFamily(fontSelect.value);
-  applyColorEffects();
-  updateNoise(true);
-  setPreviewState(currentState);
+  if (labelTextInput) {
+    labelTextInput.addEventListener("input", updateLabelText);
+  }
+  if (labelFontSelect) {
+    labelFontSelect.addEventListener("change", handleLabelFontChange);
+  }
+  if (labelCustomFontNameInput) {
+    labelCustomFontNameInput.addEventListener("input", updateLabelCustomFont);
+  }
+  if (labelFontSizeInput) {
+    labelFontSizeInput.addEventListener("input", updateLabelFontSize);
+  }
+  if (labelStrokeToggle) {
+    labelStrokeToggle.addEventListener("change", updateLabelStroke);
+  }
+  if (labelStrokeWidthInput) {
+    labelStrokeWidthInput.addEventListener("input", updateLabelStroke);
+  }
+  if (labelStrokeColorInput) {
+    labelStrokeColorInput.addEventListener("input", updateLabelStroke);
+  }
+  if (labelGradientToggle) {
+    labelGradientToggle.addEventListener("change", updateLabelGradient);
+  }
+  if (labelGradientStartInput) {
+    labelGradientStartInput.addEventListener("input", updateLabelGradient);
+  }
+  if (labelGradientEndInput) {
+    labelGradientEndInput.addEventListener("input", updateLabelGradient);
+  }
+  if (labelGradientAngleInput) {
+    labelGradientAngleInput.addEventListener("input", updateLabelGradient);
+  }
+  if (labelSolidColorInput) {
+    labelSolidColorInput.addEventListener("input", updateLabelGradient);
+  }
+  if (labelShadowXInput) {
+    labelShadowXInput.addEventListener("input", updateLabelShadow);
+  }
+  if (labelShadowYInput) {
+    labelShadowYInput.addEventListener("input", updateLabelShadow);
+  }
+  if (labelShadowBlurInput) {
+    labelShadowBlurInput.addEventListener("input", updateLabelShadow);
+  }
+  if (labelShadowColorInput) {
+    labelShadowColorInput.addEventListener("input", updateLabelShadow);
+  }
+  if (labelDownloadButton) {
+    labelDownloadButton.addEventListener("click", downloadLabelImage);
+  }
+
+  // Initial render
+  if (previewButton) {
+    updateButtonText();
+    updateButtonSize();
+    updateAlignment();
+    updateFontSize();
+    applyButtonFont(fontSelect.value);
+    applyColorEffects();
+    updateNoise(true);
+    setPreviewState(currentButtonState);
+  }
+
+  if (labelPreview) {
+    updateLabelText();
+    updateLabelFontSize();
+    applyLabelFont(labelFontSelect.value);
+    updateLabelStroke();
+    updateLabelGradient();
+    updateLabelShadow();
+  }
+
+  function activateTool(toolName) {
+    const safeName = toolName || "button";
+    toolTabs.forEach((tab) => {
+      tab.classList.toggle("active", tab.dataset.toolTarget === safeName);
+    });
+    toolViews.forEach((view) => {
+      const matches = view.dataset.tool === safeName;
+      view.classList.toggle("hidden", !matches);
+    });
+
+    if (safeName === "button" && buttonTextInput) {
+      buttonTextInput.focus({ preventScroll: true });
+    } else if (safeName === "label" && labelTextInput) {
+      labelTextInput.focus({ preventScroll: true });
+    }
+  }
+
+  toolTabs.forEach((tab) => {
+    tab.addEventListener("click", () => activateTool(tab.dataset.toolTarget));
+  });
+
+  activateTool("button");
 })();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
