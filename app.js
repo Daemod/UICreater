@@ -526,10 +526,6 @@
   const labelGradientEndInput = document.getElementById("labelGradientEnd");
   const labelGradientAngleInput = document.getElementById("labelGradientAngle");
   const labelSolidColorInput = document.getElementById("labelSolidColor");
-  const labelShadowXInput = document.getElementById("labelShadowX");
-  const labelShadowYInput = document.getElementById("labelShadowY");
-  const labelShadowBlurInput = document.getElementById("labelShadowBlur");
-  const labelShadowColorInput = document.getElementById("labelShadowColor");
   const labelDownloadButton = document.getElementById("labelDownload");
 
   const labelFontState = {
@@ -608,17 +604,6 @@
       labelPreview.style.webkitTextFillColor = solid;
       labelPreview.style.color = solid;
     }
-  }
-
-  function updateLabelShadow() {
-    const offsetX = parseFloat(labelShadowXInput.value) || 0;
-    const offsetY = parseFloat(labelShadowYInput.value) || 0;
-    const blur = clamp(parseFloat(labelShadowBlurInput.value), 0, 120, 12);
-    const color = normaliseHex(labelShadowColorInput.value, "#160400");
-
-    labelShadowBlurInput.value = blur;
-    labelShadowColorInput.value = color;
-    labelPreview.style.textShadow = offsetX + "px " + offsetY + "px " + blur + "px " + color;
   }
 
   async function downloadLabelImage() {
@@ -761,18 +746,6 @@
   if (labelSolidColorInput) {
     labelSolidColorInput.addEventListener("input", updateLabelGradient);
   }
-  if (labelShadowXInput) {
-    labelShadowXInput.addEventListener("input", updateLabelShadow);
-  }
-  if (labelShadowYInput) {
-    labelShadowYInput.addEventListener("input", updateLabelShadow);
-  }
-  if (labelShadowBlurInput) {
-    labelShadowBlurInput.addEventListener("input", updateLabelShadow);
-  }
-  if (labelShadowColorInput) {
-    labelShadowColorInput.addEventListener("input", updateLabelShadow);
-  }
   if (labelDownloadButton) {
     labelDownloadButton.addEventListener("click", downloadLabelImage);
   }
@@ -795,7 +768,7 @@
     applyLabelFont(labelFontSelect.value);
     updateLabelStroke();
     updateLabelGradient();
-    updateLabelShadow();
+    labelPreview.style.textShadow = "none";
   }
 
   function activateTool(toolName) {
