@@ -368,6 +368,71 @@
     }
   }
 
+  const fontCssCache = new Map();
+
+  function blobToDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function getInlineFontCss() {
+    const href = fontLoader ? fontLoader.href : "";
+    if (!href) return "";
+
+    if (fontCssCache.has(href)) {
+      return fontCssCache.get(href);
+    }
+
+    try {
+      const response = await fetch(href, { cache: "force-cache" });
+      if (!response.ok) {
+        throw new Error("Failed to fetch font CSS");
+      }
+      let cssText = await response.text();
+      const urlRegex = /url\(([^)]+)\)/g;
+      const urls = new Set();
+      let match;
+      while ((match = urlRegex.exec(cssText))) {
+        const rawUrl = match[1].trim().replace(/^['"]|['"]$/g, "");
+        if (/^https?:/i.test(rawUrl)) {
+          urls.add(rawUrl);
+        }
+      }
+
+      for (const url of urls) {
+        try {
+          const fontResponse = await fetch(url, { cache: "force-cache" });
+          if (!fontResponse.ok) continue;
+          const fontBlob = await fontResponse.blob();
+          const dataUrl = await blobToDataUrl(fontBlob);
+          const escapedUrl = url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          cssText = cssText.replace(new RegExp(escapedUrl, "g"), dataUrl);
+        } catch (error) {
+          console.warn("Не удалось встроить шрифт:", error);
+        }
+      }
+
+      fontCssCache.set(href, cssText);
+      return cssText;
+    } catch (error) {
+      console.warn("Не удалось получить CSS шрифта:", error);
+      fontCssCache.set(href, "");
+      return "";
+    }
+  }
+
+  async function appendFontStyles(wrapper) {
+    const cssText = await getInlineFontCss();
+    if (!cssText) return;
+    const style = document.createElement("style");
+    style.textContent = cssText;
+    wrapper.insertBefore(style, wrapper.firstChild);
+  }
+
   async function downloadState(state) {
     if (typeof domtoimage !== "object" || typeof domtoimage.toPng !== "function") {
       alert("Не удалось найти dom-to-image. Проверьте подключение библиотеки.");
@@ -393,14 +458,21 @@
       exportNoise.style.cssText = noiseLayer.style.cssText;
     }
 
-    exportHost.appendChild(exportButton);
+    const exportWrapper = document.createElement("div");
+    exportWrapper.style.display = "inline-block";
+    exportWrapper.style.padding = "0";
+    exportWrapper.style.margin = "0";
+    exportWrapper.style.background = "transparent";
+    exportWrapper.appendChild(exportButton);
+    exportHost.appendChild(exportWrapper);
 
     await waitForFonts();
     await ensureFontReady();
+    await appendFontStyles(exportWrapper);
     await waitForNextFrame();
 
     try {
-      const dataUrl = await domtoimage.toPng(exportButton, {
+      const dataUrl = await domtoimage.toPng(exportWrapper, {
         cacheBust: true,
         pixelRatio: 1,
         bgcolor: "rgba(0,0,0,0)",
@@ -413,7 +485,7 @@
       console.error("Не удалось сформировать изображение кнопки:", error);
       alert("Не получилось сохранить изображение. Попробуйте ещё раз.");
     } finally {
-      exportHost.removeChild(exportButton);
+      exportHost.removeChild(exportWrapper);
     }
   }
 
