@@ -46,6 +46,12 @@
     return "#" + toHex(r) + toHex(g) + toHex(b);
   }
 
+  function hexToRgbaString(hex, alpha = 1) {
+    const normalisedAlpha = Math.max(0, Math.min(1, Number(alpha) || 0));
+    const { r, g, b } = hexToRgb(hex);
+    return `rgba(${r}, ${g}, ${b}, ${normalisedAlpha.toFixed(2)})`;
+  }
+
   function hexToHsl(hex) {
     const { r, g, b } = hexToRgb(hex);
     const rNorm = r / 255;
@@ -264,6 +270,8 @@
   const customFontNameInput = document.getElementById("customFontName");
   const alignHorizontalSelect = document.getElementById("alignHorizontal");
   const alignVerticalSelect = document.getElementById("alignVertical");
+  const borderWidthInput = document.getElementById("borderWidth");
+  const borderColorInput = document.getElementById("borderColor");
   const stateButtons = document.querySelectorAll("[data-preview-state]");
   const saveButtons = document.querySelectorAll("[data-save-state]");
   const colorNormalInput = document.getElementById("colorNormal");
@@ -403,6 +411,41 @@
     };
 
     previewButton.style.textAlign = textAlignMap[horizontal] || "center";
+  }
+
+  function updateBorderStyles() {
+    if (!previewButton) return;
+
+    const widthValue = clamp(parseInt(borderWidthInput?.value, 10), 0, 16, 0);
+    if (borderWidthInput) {
+      borderWidthInput.value = widthValue;
+    }
+
+    const baseColorInput = borderColorInput ? borderColorInput.value : "#000000";
+    const baseColor = normaliseHex(baseColorInput, "#000000");
+    if (borderColorInput) {
+      borderColorInput.value = baseColor;
+    }
+
+    previewButton.style.setProperty("--btn-border-width", widthValue + "px");
+
+    if (widthValue > 0) {
+      const highlight = adjustLightness(baseColor, 40);
+      const shadow = adjustLightness(baseColor, -35);
+      previewButton.style.setProperty("--btn-border-color", baseColor);
+      previewButton.style.setProperty("--btn-border-highlight", highlight);
+      previewButton.style.setProperty("--btn-border-shadow", shadow);
+      previewButton.style.setProperty("--btn-border-glow", hexToRgbaString(baseColor, 0.45));
+      previewButton.style.setProperty("--btn-border-overlay-opacity", "1");
+    } else {
+      previewButton.style.setProperty("--btn-border-color", "transparent");
+      previewButton.style.setProperty("--btn-border-highlight", "transparent");
+      previewButton.style.setProperty("--btn-border-shadow", "transparent");
+      previewButton.style.setProperty("--btn-border-glow", "rgba(0, 0, 0, 0)");
+      previewButton.style.setProperty("--btn-border-overlay-opacity", "0");
+    }
+
+    previewButton.classList.toggle("has-border", widthValue > 0);
   }
 
   function updateFontSize() {
@@ -663,6 +706,12 @@
     alignHorizontalSelect.addEventListener("change", updateAlignment);
     alignVerticalSelect.addEventListener("change", updateAlignment);
   }
+  if (borderWidthInput) {
+    borderWidthInput.addEventListener("input", updateBorderStyles);
+  }
+  if (borderColorInput) {
+    borderColorInput.addEventListener("input", updateBorderStyles);
+  }
   if (fontSelect) {
     fontSelect.addEventListener("change", handleFontSelectChange);
   }
@@ -755,6 +804,7 @@
     updateButtonText();
     updateButtonSize();
     updateAlignment();
+    updateBorderStyles();
     updateFontSize();
     applyButtonFont(fontSelect.value);
     applyColorEffects();
