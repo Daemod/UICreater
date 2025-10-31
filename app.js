@@ -610,11 +610,8 @@
     alignHorizontal: nineAlignHorizontalSelect?.value || "center",
     alignVertical: nineAlignVerticalSelect?.value || "center",
     textColor: nineTextColorInput?.value || "#ffffff",
-    states: {
-      normal: { slices: { ...defaultNineSlices }, padding: { ...defaultNinePadding } },
-      hover: { slices: { ...defaultNineSlices }, padding: { ...defaultNinePadding } },
-      active: { slices: { ...defaultNineSlices }, padding: { ...defaultNinePadding } },
-    },
+    slices: { ...defaultNineSlices },
+    padding: { ...defaultNinePadding },
   };
 
   function cloneInsets(source, fallback) {
@@ -636,20 +633,8 @@
         alignHorizontal: nineConfig.alignHorizontal,
         alignVertical: nineConfig.alignVertical,
         textColor: nineConfig.textColor,
-        states: {
-          normal: {
-            slices: { ...nineConfig.states.normal.slices },
-            padding: { ...nineConfig.states.normal.padding },
-          },
-          hover: {
-            slices: { ...nineConfig.states.hover.slices },
-            padding: { ...nineConfig.states.hover.padding },
-          },
-          active: {
-            slices: { ...nineConfig.states.active.slices },
-            padding: { ...nineConfig.states.active.padding },
-          },
-        },
+        slices: { ...nineConfig.slices },
+        padding: { ...nineConfig.padding },
       };
       window.localStorage.setItem(NINE_STORAGE_KEY, JSON.stringify(payload));
     } catch (error) {
@@ -698,15 +683,24 @@
         nineConfig.fontFamily = parsed.fontFamily;
       }
 
-      if (parsed.states && typeof parsed.states === "object") {
-        NINE_STATE_KEYS.forEach((state) => {
-          const stateData = parsed.states[state];
-          if (!stateData || typeof stateData !== "object") return;
-          nineConfig.states[state] = {
-            slices: cloneInsets(stateData.slices, defaultNineSlices),
-            padding: cloneInsets(stateData.padding, defaultNinePadding),
-          };
-        });
+      if (parsed.slices && typeof parsed.slices === "object") {
+        nineConfig.slices = cloneInsets(parsed.slices, defaultNineSlices);
+      } else if (parsed.states && typeof parsed.states === "object") {
+        const legacyState = NINE_STATE_KEYS.map((state) => parsed.states[state])
+          .find((stateData) => stateData && typeof stateData === "object");
+        if (legacyState) {
+          nineConfig.slices = cloneInsets(legacyState.slices, defaultNineSlices);
+        }
+      }
+
+      if (parsed.padding && typeof parsed.padding === "object") {
+        nineConfig.padding = cloneInsets(parsed.padding, defaultNinePadding);
+      } else if (parsed.states && typeof parsed.states === "object") {
+        const legacyState = NINE_STATE_KEYS.map((state) => parsed.states[state])
+          .find((stateData) => stateData && typeof stateData === "object");
+        if (legacyState) {
+          nineConfig.padding = cloneInsets(legacyState.padding, defaultNinePadding);
+        }
       }
     } catch (error) {
       console.warn("Не удалось загрузить настройки nine-patch:", error);
@@ -800,12 +794,10 @@
   }
 
   function syncNineStateControls() {
-    const stateConfig = nineConfig.states[currentNineState];
-    if (!stateConfig) return;
     nineSliceInputs.forEach((input) => {
       const key = input.dataset.nineSlice;
       if (!key) return;
-      const value = stateConfig.slices[key];
+      const value = nineConfig.slices[key];
       if (Number.isFinite(value)) {
         input.value = Math.max(0, Math.round(value));
       }
@@ -813,7 +805,7 @@
     ninePaddingInputs.forEach((input) => {
       const key = input.dataset.ninePadding;
       if (!key) return;
-      const value = stateConfig.padding[key];
+      const value = nineConfig.padding[key];
       if (Number.isFinite(value)) {
         input.value = Math.max(0, Math.round(value));
       }
@@ -821,14 +813,13 @@
   }
 
   function updateNineSliceValue(input, key, rawValue) {
-    const stateConfig = nineConfig.states[currentNineState];
-    if (!stateConfig || !(key in stateConfig.slices)) return;
+    if (!(key in nineConfig.slices)) return;
     const image = nineImages[currentNineState];
     const dimension = key === "top" || key === "bottom"
       ? image?.naturalHeight || 512
       : image?.naturalWidth || 512;
-    const numeric = clamp(parseInt(rawValue, 10), 0, dimension, stateConfig.slices[key]);
-    stateConfig.slices[key] = numeric;
+    const numeric = clamp(parseInt(rawValue, 10), 0, dimension, nineConfig.slices[key]);
+    nineConfig.slices[key] = numeric;
     if (input) {
       input.value = numeric;
     }
@@ -837,10 +828,9 @@
   }
 
   function updateNinePaddingValue(input, key, rawValue) {
-    const stateConfig = nineConfig.states[currentNineState];
-    if (!stateConfig || !(key in stateConfig.padding)) return;
+    if (!(key in nineConfig.padding)) return;
     const numeric = Math.max(0, parseInt(rawValue, 10));
-    stateConfig.padding[key] = Number.isFinite(numeric) ? numeric : stateConfig.padding[key];
+    nineConfig.padding[key] = Number.isFinite(numeric) ? numeric : nineConfig.padding[key];
     if (input && Number.isFinite(numeric)) {
       input.value = numeric;
     }
@@ -981,14 +971,15 @@
     let targetWidth = 0;
     let targetHeight = 0;
 
+    const slices = nineConfig.slices;
+    const padding = nineConfig.padding;
+
     NINE_STATE_KEYS.forEach((state) => {
-      const stateConfig = nineConfig.states[state];
       const image = nineImages[state];
-      if (!stateConfig || !image) return;
-      const slices = stateConfig.slices;
-      const padding = stateConfig.padding;
-      const minWidth = Math.max(image.naturalWidth, (slices.left || 0) + (slices.right || 0));
-      const minHeight = Math.max(image.naturalHeight, (slices.top || 0) + (slices.bottom || 0));
+      if (!image) return;
+      const normalisedSlices = normaliseNineSlices(slices, image);
+      const minWidth = Math.max(image.naturalWidth, (normalisedSlices.left || 0) + (normalisedSlices.right || 0));
+      const minHeight = Math.max(image.naturalHeight, (normalisedSlices.top || 0) + (normalisedSlices.bottom || 0));
       const paddedWidth = measuredWidth + (padding.left || 0) + (padding.right || 0);
       const paddedHeight = measuredHeight + (padding.top || 0) + (padding.bottom || 0);
       targetWidth = Math.max(targetWidth, minWidth, paddedWidth);
@@ -1005,11 +996,10 @@
     NINE_STATE_KEYS.forEach((state) => {
       const canvas = nineCanvasElements[state];
       const image = nineImages[state];
-      const stateConfig = nineConfig.states[state];
-      if (!canvas || !image || !stateConfig) return;
-      const ctx = drawNinePatch(canvas, image, targetWidth, targetHeight, stateConfig.slices);
+      if (!canvas || !image) return;
+      const ctx = drawNinePatch(canvas, image, targetWidth, targetHeight, nineConfig.slices);
       if (!ctx) return;
-      drawNineText(ctx, canvas, textValue, stateConfig.padding);
+      drawNineText(ctx, canvas, textValue, nineConfig.padding);
     });
   }
 
