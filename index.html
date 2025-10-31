@@ -14,6 +14,7 @@
       <div class="brand">UI Creater</div>
       <nav class="tool-switcher" aria-label="Выбор инструмента">
         <button class="tool-tab active" type="button" data-tool-target="button">Генератор кнопок</button>
+        <button class="tool-tab" type="button" data-tool-target="ninepatch">Nine-patch кнопки</button>
         <button class="tool-tab" type="button" data-tool-target="label">Генератор надписей</button>
       </nav>
     </header>
@@ -165,6 +166,142 @@
           <button type="button" class="save-btn" data-save-state="normal">Скачать Normal</button>
           <button type="button" class="save-btn" data-save-state="hover">Скачать Hover</button>
           <button type="button" class="save-btn" data-save-state="active">Скачать Active</button>
+        </div>
+      </section>
+    </section>
+
+    <section class="app hidden" data-tool="ninepatch">
+      <section class="panel controls">
+        <h1>Генератор Nine-patch кнопок</h1>
+        <form class="control-form" autocomplete="off">
+          <label class="field">
+            <span>Текст на кнопке</span>
+            <input id="nineText" type="text" placeholder="Введите текст" value="Параметр">
+          </label>
+
+          <label class="field">
+            <span>Шрифт</span>
+            <select id="nineFontSelect">
+              <option value="Inter" selected>Inter</option>
+              <option value="Roboto">Roboto</option>
+              <option value="Montserrat">Montserrat</option>
+              <option value="Poppins">Poppins</option>
+              <option value="Cormorant Unicase">Cormorant Unicase</option>
+              <option value="custom">Другой...</option>
+            </select>
+          </label>
+
+          <div id="nineCustomFontWrapper" class="field hidden">
+            <span>Название шрифта</span>
+            <input id="nineCustomFontName" type="text" placeholder="Например, Manrope">
+          </div>
+
+          <label class="field">
+            <span>Размер шрифта (px)</span>
+            <input id="nineFontSize" type="number" min="8" max="160" value="20">
+          </label>
+
+          <div class="field two-columns">
+            <label>
+              <span>Горизонтальное выравнивание</span>
+              <select id="nineAlignHorizontal">
+                <option value="flex-start">Слева</option>
+                <option value="center" selected>По центру</option>
+                <option value="flex-end">Справа</option>
+              </select>
+            </label>
+            <label>
+              <span>Вертикальное выравнивание</span>
+              <select id="nineAlignVertical">
+                <option value="flex-start">Сверху</option>
+                <option value="center" selected>По центру</option>
+                <option value="flex-end">Снизу</option>
+              </select>
+            </label>
+          </div>
+
+          <label class="field">
+            <span>Цвет текста</span>
+            <input id="nineTextColor" type="color" value="#ffffff">
+          </label>
+
+          <div class="field">
+            <span>Состояние кнопки</span>
+            <div class="nine-state-switch">
+              <button type="button" class="nine-state-btn active" data-nine-state="normal">Normal</button>
+              <button type="button" class="nine-state-btn" data-nine-state="hover">Hover</button>
+              <button type="button" class="nine-state-btn" data-nine-state="active">Active</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <span>Нерастягиваемые края (px)</span>
+            <div class="four-grid">
+              <label>
+                <span>Сверху</span>
+                <input type="number" min="0" max="200" value="16" data-nine-slice="top">
+              </label>
+              <label>
+                <span>Справа</span>
+                <input type="number" min="0" max="200" value="16" data-nine-slice="right">
+              </label>
+              <label>
+                <span>Снизу</span>
+                <input type="number" min="0" max="200" value="16" data-nine-slice="bottom">
+              </label>
+              <label>
+                <span>Слева</span>
+                <input type="number" min="0" max="200" value="16" data-nine-slice="left">
+              </label>
+            </div>
+          </div>
+
+          <div class="field">
+            <span>Отступы текста (px)</span>
+            <div class="four-grid">
+              <label>
+                <span>Сверху</span>
+                <input type="number" min="0" max="300" value="16" data-nine-padding="top">
+              </label>
+              <label>
+                <span>Справа</span>
+                <input type="number" min="0" max="300" value="24" data-nine-padding="right">
+              </label>
+              <label>
+                <span>Снизу</span>
+                <input type="number" min="0" max="300" value="16" data-nine-padding="bottom">
+              </label>
+              <label>
+                <span>Слева</span>
+                <input type="number" min="0" max="300" value="24" data-nine-padding="left">
+              </label>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel preview">
+        <div class="preview-header nine-preview-header">
+          <span>Предпросмотр состояний</span>
+          <div class="nine-download-group">
+            <button type="button" class="save-btn" data-nine-save="normal">PNG Normal</button>
+            <button type="button" class="save-btn" data-nine-save="hover">PNG Hover</button>
+            <button type="button" class="save-btn" data-nine-save="active">PNG Active</button>
+          </div>
+        </div>
+        <div class="preview-stage nine-preview-stage">
+          <figure class="nine-preview" data-state="normal">
+            <canvas id="nineCanvasNormal" width="256" height="128" role="img" aria-label="Normal"></canvas>
+            <figcaption>Normal</figcaption>
+          </figure>
+          <figure class="nine-preview" data-state="hover">
+            <canvas id="nineCanvasHover" width="256" height="128" role="img" aria-label="Hover"></canvas>
+            <figcaption>Hover</figcaption>
+          </figure>
+          <figure class="nine-preview" data-state="active">
+            <canvas id="nineCanvasActive" width="256" height="128" role="img" aria-label="Active"></canvas>
+            <figcaption>Active</figcaption>
+          </figure>
         </div>
       </section>
     </section>

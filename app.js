@@ -554,6 +554,530 @@
     }
   }
 
+  // Nine-patch generator elements
+  const nineTextInput = document.getElementById("nineText");
+  const nineFontSelect = document.getElementById("nineFontSelect");
+  const nineCustomFontWrapper = document.getElementById("nineCustomFontWrapper");
+  const nineCustomFontNameInput = document.getElementById("nineCustomFontName");
+  const nineFontSizeInput = document.getElementById("nineFontSize");
+  const nineAlignHorizontalSelect = document.getElementById("nineAlignHorizontal");
+  const nineAlignVerticalSelect = document.getElementById("nineAlignVertical");
+  const nineTextColorInput = document.getElementById("nineTextColor");
+  const nineStateButtons = document.querySelectorAll("[data-nine-state]");
+  const nineSliceInputs = document.querySelectorAll("[data-nine-slice]");
+  const ninePaddingInputs = document.querySelectorAll("[data-nine-padding]");
+  const nineSaveButtons = document.querySelectorAll("[data-nine-save]");
+  const nineCanvasElements = {
+    normal: document.getElementById("nineCanvasNormal"),
+    hover: document.getElementById("nineCanvasHover"),
+    active: document.getElementById("nineCanvasActive"),
+  };
+
+  const nineFontProbe = document.createElement("span");
+  nineFontProbe.style.position = "absolute";
+  nineFontProbe.style.left = "-9999px";
+  nineFontProbe.style.top = "0";
+  nineFontProbe.style.visibility = "hidden";
+  nineFontProbe.style.pointerEvents = "none";
+  nineFontProbe.textContent = "Aa";
+  if (document.body) {
+    document.body.appendChild(nineFontProbe);
+  }
+
+  const nineMeasureCanvas = document.createElement("canvas");
+  const nineMeasureContext = nineMeasureCanvas.getContext("2d");
+
+  const NINE_STATE_KEYS = ["normal", "hover", "active"];
+  const NINE_STORAGE_KEY = "ui-creater-ninepatch-config-v1";
+  const nineImageSources = {
+    normal: "assets/paramUp.png",
+    hover: "assets/paramHover.png",
+    active: "assets/paramDown.png",
+  };
+
+  const nineImages = {};
+  let nineImagesReady = false;
+  let currentNineState = "normal";
+  const NINE_TEXT_FALLBACK = "Параметр";
+
+  const defaultNineSlices = { top: 16, right: 16, bottom: 16, left: 16 };
+  const defaultNinePadding = { top: 16, right: 24, bottom: 16, left: 24 };
+
+  const nineConfig = {
+    text: nineTextInput ? nineTextInput.value : NINE_TEXT_FALLBACK,
+    fontFamily: "Inter",
+    fontSize: Number(nineFontSizeInput?.value) || 20,
+    alignHorizontal: nineAlignHorizontalSelect?.value || "center",
+    alignVertical: nineAlignVerticalSelect?.value || "center",
+    textColor: nineTextColorInput?.value || "#ffffff",
+    states: {
+      normal: { slices: { ...defaultNineSlices }, padding: { ...defaultNinePadding } },
+      hover: { slices: { ...defaultNineSlices }, padding: { ...defaultNinePadding } },
+      active: { slices: { ...defaultNineSlices }, padding: { ...defaultNinePadding } },
+    },
+  };
+
+  function cloneInsets(source, fallback) {
+    return {
+      top: Number.isFinite(source?.top) ? source.top : fallback.top,
+      right: Number.isFinite(source?.right) ? source.right : fallback.right,
+      bottom: Number.isFinite(source?.bottom) ? source.bottom : fallback.bottom,
+      left: Number.isFinite(source?.left) ? source.left : fallback.left,
+    };
+  }
+
+  function persistNineConfig() {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    try {
+      const payload = {
+        text: nineConfig.text,
+        fontFamily: nineConfig.fontFamily,
+        fontSize: nineConfig.fontSize,
+        alignHorizontal: nineConfig.alignHorizontal,
+        alignVertical: nineConfig.alignVertical,
+        textColor: nineConfig.textColor,
+        states: {
+          normal: {
+            slices: { ...nineConfig.states.normal.slices },
+            padding: { ...nineConfig.states.normal.padding },
+          },
+          hover: {
+            slices: { ...nineConfig.states.hover.slices },
+            padding: { ...nineConfig.states.hover.padding },
+          },
+          active: {
+            slices: { ...nineConfig.states.active.slices },
+            padding: { ...nineConfig.states.active.padding },
+          },
+        },
+      };
+      window.localStorage.setItem(NINE_STORAGE_KEY, JSON.stringify(payload));
+    } catch (error) {
+      console.warn("Не удалось сохранить настройки nine-patch:", error);
+    }
+  }
+
+  function loadNineConfigFromStorage() {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    try {
+      const stored = window.localStorage.getItem(NINE_STORAGE_KEY);
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (!parsed || typeof parsed !== "object") return;
+
+      if (typeof parsed.text === "string" && nineTextInput) {
+        nineTextInput.value = parsed.text;
+        nineConfig.text = parsed.text;
+      }
+      if (typeof parsed.fontSize === "number" && Number.isFinite(parsed.fontSize)) {
+        nineConfig.fontSize = clamp(parsed.fontSize, 8, 240, nineConfig.fontSize);
+        if (nineFontSizeInput) {
+          nineFontSizeInput.value = nineConfig.fontSize;
+        }
+      }
+      if (typeof parsed.alignHorizontal === "string") {
+        nineConfig.alignHorizontal = parsed.alignHorizontal;
+        if (nineAlignHorizontalSelect) {
+          nineAlignHorizontalSelect.value = parsed.alignHorizontal;
+        }
+      }
+      if (typeof parsed.alignVertical === "string") {
+        nineConfig.alignVertical = parsed.alignVertical;
+        if (nineAlignVerticalSelect) {
+          nineAlignVerticalSelect.value = parsed.alignVertical;
+        }
+      }
+      if (typeof parsed.textColor === "string") {
+        const colour = normaliseHex(parsed.textColor, nineConfig.textColor);
+        nineConfig.textColor = colour;
+        if (nineTextColorInput) {
+          nineTextColorInput.value = colour;
+        }
+      }
+      if (typeof parsed.fontFamily === "string") {
+        nineConfig.fontFamily = parsed.fontFamily;
+      }
+
+      if (parsed.states && typeof parsed.states === "object") {
+        NINE_STATE_KEYS.forEach((state) => {
+          const stateData = parsed.states[state];
+          if (!stateData || typeof stateData !== "object") return;
+          nineConfig.states[state] = {
+            slices: cloneInsets(stateData.slices, defaultNineSlices),
+            padding: cloneInsets(stateData.padding, defaultNinePadding),
+          };
+        });
+      }
+    } catch (error) {
+      console.warn("Не удалось загрузить настройки nine-patch:", error);
+    }
+  }
+
+  function setNineFontFamily(fontName, options = {}) {
+    const trimmed = (fontName || "").trim() || "Inter";
+    nineConfig.fontFamily = trimmed;
+    const href = buildFontHref(trimmed);
+    if (fontLoader && fontLoader.href !== href) {
+      fontLoader.href = href;
+      fontLoader.setAttribute("crossorigin", "anonymous");
+    }
+    nineFontProbe.style.fontFamily = "'" + trimmed + "', sans-serif";
+    ensureFontReady(nineFontProbe, trimmed, nineConfig.fontSize);
+    if (!options.skipRender) {
+      renderNinePreviews();
+    }
+    if (!options.skipPersist) {
+      persistNineConfig();
+    }
+  }
+
+  function handleNineFontChange() {
+    if (!nineFontSelect) return;
+    const value = nineFontSelect.value;
+    const isCustom = value === "custom";
+    if (nineCustomFontWrapper) {
+      nineCustomFontWrapper.classList.toggle("hidden", !isCustom);
+    }
+    if (isCustom) {
+      nineCustomFontNameInput?.focus();
+    } else {
+      setNineFontFamily(value);
+    }
+  }
+
+  function updateNineCustomFont() {
+    const name = nineCustomFontNameInput?.value || "";
+    if (name.trim()) {
+      setNineFontFamily(name);
+    }
+  }
+
+  function updateNineText() {
+    if (!nineTextInput) return;
+    const value = nineTextInput.value.trim();
+    nineConfig.text = value || NINE_TEXT_FALLBACK;
+    persistNineConfig();
+    renderNinePreviews();
+  }
+
+  function updateNineFontSize() {
+    if (!nineFontSizeInput) return;
+    const size = clamp(parseInt(nineFontSizeInput.value, 10), 8, 240, nineConfig.fontSize);
+    nineConfig.fontSize = size;
+    nineFontSizeInput.value = size;
+    ensureFontReady(nineFontProbe, nineConfig.fontFamily, size);
+    persistNineConfig();
+    renderNinePreviews();
+  }
+
+  function updateNineAlignment() {
+    if (nineAlignHorizontalSelect) {
+      nineConfig.alignHorizontal = nineAlignHorizontalSelect.value;
+    }
+    if (nineAlignVerticalSelect) {
+      nineConfig.alignVertical = nineAlignVerticalSelect.value;
+    }
+    persistNineConfig();
+    renderNinePreviews();
+  }
+
+  function updateNineTextColor() {
+    if (!nineTextColorInput) return;
+    const colour = normaliseHex(nineTextColorInput.value, nineConfig.textColor);
+    nineConfig.textColor = colour;
+    nineTextColorInput.value = colour;
+    persistNineConfig();
+    renderNinePreviews();
+  }
+
+  function setNineActiveState(state) {
+    if (!NINE_STATE_KEYS.includes(state)) return;
+    currentNineState = state;
+    nineStateButtons.forEach((button) => {
+      button.classList.toggle("active", button.dataset.nineState === state);
+    });
+    syncNineStateControls();
+  }
+
+  function syncNineStateControls() {
+    const stateConfig = nineConfig.states[currentNineState];
+    if (!stateConfig) return;
+    nineSliceInputs.forEach((input) => {
+      const key = input.dataset.nineSlice;
+      if (!key) return;
+      const value = stateConfig.slices[key];
+      if (Number.isFinite(value)) {
+        input.value = Math.max(0, Math.round(value));
+      }
+    });
+    ninePaddingInputs.forEach((input) => {
+      const key = input.dataset.ninePadding;
+      if (!key) return;
+      const value = stateConfig.padding[key];
+      if (Number.isFinite(value)) {
+        input.value = Math.max(0, Math.round(value));
+      }
+    });
+  }
+
+  function updateNineSliceValue(input, key, rawValue) {
+    const stateConfig = nineConfig.states[currentNineState];
+    if (!stateConfig || !(key in stateConfig.slices)) return;
+    const image = nineImages[currentNineState];
+    const dimension = key === "top" || key === "bottom"
+      ? image?.naturalHeight || 512
+      : image?.naturalWidth || 512;
+    const numeric = clamp(parseInt(rawValue, 10), 0, dimension, stateConfig.slices[key]);
+    stateConfig.slices[key] = numeric;
+    if (input) {
+      input.value = numeric;
+    }
+    persistNineConfig();
+    renderNinePreviews();
+  }
+
+  function updateNinePaddingValue(input, key, rawValue) {
+    const stateConfig = nineConfig.states[currentNineState];
+    if (!stateConfig || !(key in stateConfig.padding)) return;
+    const numeric = Math.max(0, parseInt(rawValue, 10));
+    stateConfig.padding[key] = Number.isFinite(numeric) ? numeric : stateConfig.padding[key];
+    if (input && Number.isFinite(numeric)) {
+      input.value = numeric;
+    }
+    persistNineConfig();
+    renderNinePreviews();
+  }
+
+  function normaliseNineSlices(slices, image) {
+    if (!image) return { ...slices };
+    const sw = image.naturalWidth || image.width;
+    const sh = image.naturalHeight || image.height;
+    const top = clamp(Math.round(slices.top || 0), 0, sh, 0);
+    const bottom = clamp(Math.round(slices.bottom || 0), 0, sh - top, 0);
+    const left = clamp(Math.round(slices.left || 0), 0, sw, 0);
+    const right = clamp(Math.round(slices.right || 0), 0, sw - left, 0);
+    const maxBottom = Math.max(0, sh - top);
+    const safeBottom = Math.min(bottom, maxBottom);
+    const maxRight = Math.max(0, sw - left);
+    const safeRight = Math.min(right, maxRight);
+    return { top, right: safeRight, bottom: safeBottom, left };
+  }
+
+  function drawNinePatch(canvas, image, width, height, slices) {
+    if (!canvas || !image) return null;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    const targetWidth = Math.max(1, Math.round(width));
+    const targetHeight = Math.max(1, Math.round(height));
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    ctx.clearRect(0, 0, targetWidth, targetHeight);
+
+    const sw = image.naturalWidth;
+    const sh = image.naturalHeight;
+    const { top, right, bottom, left } = normaliseNineSlices(slices, image);
+
+    const centerWidth = Math.max(0, sw - left - right);
+    const centerHeight = Math.max(0, sh - top - bottom);
+    const destCenterWidth = Math.max(0, targetWidth - left - right);
+    const destCenterHeight = Math.max(0, targetHeight - top - bottom);
+
+    const drawPart = (sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight) => {
+      if (sWidth <= 0 || sHeight <= 0 || dWidth <= 0 || dHeight <= 0) return;
+      ctx.drawImage(image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight);
+    };
+
+    // Corners
+    drawPart(0, 0, left, top, 0, 0, left, top);
+    drawPart(sw - right, 0, right, top, targetWidth - right, 0, right, top);
+    drawPart(0, sh - bottom, left, bottom, 0, targetHeight - bottom, left, bottom);
+    drawPart(sw - right, sh - bottom, right, bottom, targetWidth - right, targetHeight - bottom, right, bottom);
+
+    // Edges
+    drawPart(left, 0, centerWidth, top, left, 0, destCenterWidth, top);
+    drawPart(left, sh - bottom, centerWidth, bottom, left, targetHeight - bottom, destCenterWidth, bottom);
+    drawPart(0, top, left, centerHeight, 0, top, left, destCenterHeight);
+    drawPart(sw - right, top, right, centerHeight, targetWidth - right, top, right, destCenterHeight);
+
+    // Center
+    drawPart(left, top, centerWidth, centerHeight, left, top, destCenterWidth, destCenterHeight);
+
+    return ctx;
+  }
+
+  function drawNineText(ctx, canvas, text, padding) {
+    if (!ctx || !canvas) return;
+    ctx.save();
+    ctx.font = "600 " + nineConfig.fontSize + "px '" + nineConfig.fontFamily + "'";
+    ctx.fillStyle = normaliseHex(nineConfig.textColor, "#ffffff");
+    const alignMap = {
+      "flex-start": "left",
+      center: "center",
+      "flex-end": "right",
+    };
+    const baselineMap = {
+      "flex-start": "top",
+      center: "middle",
+      "flex-end": "bottom",
+    };
+    const width = canvas.width;
+    const height = canvas.height;
+    const padTop = Math.max(0, padding.top || 0);
+    const padRight = Math.max(0, padding.right || 0);
+    const padBottom = Math.max(0, padding.bottom || 0);
+    const padLeft = Math.max(0, padding.left || 0);
+    const contentWidth = Math.max(0, width - padLeft - padRight);
+    const contentHeight = Math.max(0, height - padTop - padBottom);
+
+    ctx.textAlign = alignMap[nineConfig.alignHorizontal] || "center";
+    ctx.textBaseline = baselineMap[nineConfig.alignVertical] || "middle";
+
+    let x;
+    switch (ctx.textAlign) {
+      case "left":
+        x = padLeft;
+        break;
+      case "right":
+        x = width - padRight;
+        break;
+      default:
+        x = padLeft + contentWidth / 2;
+        break;
+    }
+
+    let y;
+    switch (ctx.textBaseline) {
+      case "top":
+        y = padTop;
+        break;
+      case "bottom":
+        y = height - padBottom;
+        break;
+      default:
+        y = padTop + contentHeight / 2;
+        break;
+    }
+
+    ctx.fillText(text, x, y);
+    ctx.restore();
+  }
+
+  async function renderNinePreviews() {
+    if (!nineTextInput) return;
+    const textValue = (nineConfig.text || "").trim() || NINE_TEXT_FALLBACK;
+    const fontSize = nineConfig.fontSize;
+    const fontFamily = nineConfig.fontFamily;
+
+    if (nineMeasureContext) {
+      nineMeasureContext.font = "600 " + fontSize + "px '" + fontFamily + "'";
+    }
+
+    const metrics = nineMeasureContext ? nineMeasureContext.measureText(textValue) : null;
+    const measuredWidth = metrics ? metrics.width : fontSize * textValue.length * 0.6;
+    const measuredHeight = metrics && metrics.actualBoundingBoxAscent && metrics.actualBoundingBoxDescent
+      ? metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent
+      : fontSize * 1.25;
+
+    let targetWidth = 0;
+    let targetHeight = 0;
+
+    NINE_STATE_KEYS.forEach((state) => {
+      const stateConfig = nineConfig.states[state];
+      const image = nineImages[state];
+      if (!stateConfig || !image) return;
+      const slices = stateConfig.slices;
+      const padding = stateConfig.padding;
+      const minWidth = Math.max(image.naturalWidth, (slices.left || 0) + (slices.right || 0));
+      const minHeight = Math.max(image.naturalHeight, (slices.top || 0) + (slices.bottom || 0));
+      const paddedWidth = measuredWidth + (padding.left || 0) + (padding.right || 0);
+      const paddedHeight = measuredHeight + (padding.top || 0) + (padding.bottom || 0);
+      targetWidth = Math.max(targetWidth, minWidth, paddedWidth);
+      targetHeight = Math.max(targetHeight, minHeight, paddedHeight);
+    });
+
+    targetWidth = Math.ceil(targetWidth);
+    targetHeight = Math.ceil(targetHeight);
+
+    await ensureFontReady(nineFontProbe, fontFamily, fontSize);
+
+    if (!nineImagesReady) return;
+
+    NINE_STATE_KEYS.forEach((state) => {
+      const canvas = nineCanvasElements[state];
+      const image = nineImages[state];
+      const stateConfig = nineConfig.states[state];
+      if (!canvas || !image || !stateConfig) return;
+      const ctx = drawNinePatch(canvas, image, targetWidth, targetHeight, stateConfig.slices);
+      if (!ctx) return;
+      drawNineText(ctx, canvas, textValue, stateConfig.padding);
+    });
+  }
+
+  function downloadNineState(state) {
+    const canvas = nineCanvasElements[state];
+    if (!canvas) return;
+    const fileName = sanitiseFileName(nineConfig.text || NINE_TEXT_FALLBACK, "nine-" + state);
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        const fallbackUrl = canvas.toDataURL("image/png");
+        const link = document.createElement("a");
+        link.download = fileName;
+        link.href = fallbackUrl;
+        link.click();
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.download = fileName;
+      link.href = url;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    }, "image/png");
+  }
+
+  function loadNineImages() {
+    const promises = NINE_STATE_KEYS.map((state) => new Promise((resolve) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => resolve(image);
+      image.src = nineImageSources[state];
+      nineImages[state] = image;
+    }));
+    return Promise.all(promises);
+  }
+
+  function initialiseNinePatch() {
+    if (!nineTextInput) return;
+    loadNineConfigFromStorage();
+
+    if (nineFontSelect) {
+      const options = Array.from(nineFontSelect.options || []);
+      const hasOption = options.some((option) => option.value === nineConfig.fontFamily);
+      if (hasOption) {
+        nineFontSelect.value = nineConfig.fontFamily;
+        if (nineCustomFontWrapper) {
+          nineCustomFontWrapper.classList.add("hidden");
+        }
+      } else {
+        nineFontSelect.value = "custom";
+        if (nineCustomFontWrapper) {
+          nineCustomFontWrapper.classList.remove("hidden");
+        }
+        if (nineCustomFontNameInput) {
+          nineCustomFontNameInput.value = nineConfig.fontFamily;
+        }
+      }
+    }
+
+    setNineFontFamily(nineConfig.fontFamily, { skipPersist: true, skipRender: true });
+    setNineActiveState(currentNineState);
+
+    loadNineImages().then(() => {
+      nineImagesReady = true;
+      renderNinePreviews();
+    });
+  }
+
   // Label generator elements
   const labelPreview = document.getElementById("labelPreview");
   const labelTextInput = document.getElementById("labelText");
@@ -799,6 +1323,44 @@
     labelDownloadButton.addEventListener("click", downloadLabelImage);
   }
 
+  if (nineTextInput) {
+    nineTextInput.addEventListener("input", updateNineText);
+  }
+  if (nineFontSelect) {
+    nineFontSelect.addEventListener("change", handleNineFontChange);
+  }
+  if (nineCustomFontNameInput) {
+    nineCustomFontNameInput.addEventListener("input", updateNineCustomFont);
+  }
+  if (nineFontSizeInput) {
+    nineFontSizeInput.addEventListener("input", updateNineFontSize);
+  }
+  if (nineAlignHorizontalSelect) {
+    nineAlignHorizontalSelect.addEventListener("change", updateNineAlignment);
+  }
+  if (nineAlignVerticalSelect) {
+    nineAlignVerticalSelect.addEventListener("change", updateNineAlignment);
+  }
+  if (nineTextColorInput) {
+    nineTextColorInput.addEventListener("input", updateNineTextColor);
+  }
+
+  nineStateButtons.forEach((button) => {
+    button.addEventListener("click", () => setNineActiveState(button.dataset.nineState));
+  });
+
+  nineSliceInputs.forEach((input) => {
+    input.addEventListener("input", () => updateNineSliceValue(input, input.dataset.nineSlice, input.value));
+  });
+
+  ninePaddingInputs.forEach((input) => {
+    input.addEventListener("input", () => updateNinePaddingValue(input, input.dataset.ninePadding, input.value));
+  });
+
+  nineSaveButtons.forEach((button) => {
+    button.addEventListener("click", () => downloadNineState(button.dataset.nineSave));
+  });
+
   // Initial render
   if (previewButton) {
     updateButtonText();
@@ -821,6 +1383,8 @@
     labelPreview.style.textShadow = "none";
   }
 
+  initialiseNinePatch();
+
   function activateTool(toolName) {
     const safeName = toolName || "button";
     toolTabs.forEach((tab) => {
@@ -833,6 +1397,8 @@
 
     if (safeName === "button" && buttonTextInput) {
       buttonTextInput.focus({ preventScroll: true });
+    } else if (safeName === "ninepatch" && nineTextInput) {
+      nineTextInput.focus({ preventScroll: true });
     } else if (safeName === "label" && labelTextInput) {
       labelTextInput.focus({ preventScroll: true });
     }
