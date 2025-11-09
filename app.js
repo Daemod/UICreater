@@ -246,13 +246,18 @@
     });
   }
 
-  function sanitiseFileName(base, suffix) {
+  function normaliseFileBase(base, fallback = "asset") {
     const trimmed = (base || "").trim().toLowerCase();
     const latinised = trimmed
       .replace(/\s+/g, "-")
       .replace(/[^a-z0-9\-_.]/g, "");
-    const safeBase = latinised || "asset";
-    return safeBase + "-" + suffix + ".png";
+    return latinised || fallback;
+  }
+
+  function sanitiseFileName(base, suffix) {
+    const safeBase = normaliseFileBase(base);
+    const safeSuffix = normaliseFileBase(suffix, "asset");
+    return safeBase + "-" + safeSuffix + ".png";
   }
 
   // Button generator elements
@@ -556,6 +561,7 @@
 
   // Nine-patch generator elements
   const nineTextInput = document.getElementById("nineText");
+  const nineFileNameInput = document.getElementById("nineFileName");
   const nineFontSelect = document.getElementById("nineFontSelect");
   const nineCustomFontWrapper = document.getElementById("nineCustomFontWrapper");
   const nineCustomFontNameInput = document.getElementById("nineCustomFontName");
@@ -607,6 +613,7 @@
 
   const nineConfig = {
     text: nineTextInput ? nineTextInput.value : NINE_TEXT_FALLBACK,
+    fileName: nineFileNameInput ? nineFileNameInput.value.trim() : "",
     fontFamily: "Inter",
     fontSize: Number(nineFontSizeInput?.value) || 20,
     alignHorizontal: nineAlignHorizontalSelect?.value || "center",
@@ -630,6 +637,7 @@
     try {
       const payload = {
         text: nineConfig.text,
+        fileName: (nineConfig.fileName || "").trim(),
         fontFamily: nineConfig.fontFamily,
         fontSize: nineConfig.fontSize,
         alignHorizontal: nineConfig.alignHorizontal,
@@ -655,6 +663,13 @@
       if (typeof parsed.text === "string" && nineTextInput) {
         nineTextInput.value = parsed.text;
         nineConfig.text = parsed.text;
+      }
+      if (typeof parsed.fileName === "string") {
+        const trimmedFileName = parsed.fileName.trim();
+        nineConfig.fileName = trimmedFileName;
+        if (nineFileNameInput) {
+          nineFileNameInput.value = trimmedFileName;
+        }
       }
       if (typeof parsed.fontSize === "number" && Number.isFinite(parsed.fontSize)) {
         nineConfig.fontSize = clamp(parsed.fontSize, 8, 240, nineConfig.fontSize);
@@ -754,6 +769,12 @@
     nineConfig.text = value || NINE_TEXT_FALLBACK;
     persistNineConfig();
     renderNinePreviews();
+  }
+
+  function updateNineFileName() {
+    if (!nineFileNameInput) return;
+    nineConfig.fileName = nineFileNameInput.value.trim();
+    persistNineConfig();
   }
 
   function updateNineFontSize() {
@@ -1020,7 +1041,8 @@
   function downloadNineState(state) {
     const canvas = nineCanvasElements[state];
     if (!canvas) return;
-    const fileName = sanitiseFileName(nineConfig.text || NINE_TEXT_FALLBACK, "nine-" + state);
+    const baseName = nineConfig.fileName?.trim() || nineConfig.text || NINE_TEXT_FALLBACK;
+    const fileName = sanitiseFileName(baseName, state);
     canvas.toBlob((blob) => {
       if (!blob) {
         const fallbackUrl = canvas.toDataURL("image/png");
@@ -1329,6 +1351,9 @@
 
   if (nineTextInput) {
     nineTextInput.addEventListener("input", updateNineText);
+  }
+  if (nineFileNameInput) {
+    nineFileNameInput.addEventListener("input", updateNineFileName);
   }
   if (nineFontSelect) {
     nineFontSelect.addEventListener("change", handleNineFontChange);
