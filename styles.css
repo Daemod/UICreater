@@ -237,6 +237,14 @@ body {
   align-items: stretch;
 }
 
+.nine-size-info {
+  margin-top: 18px;
+  font-size: 0.9rem;
+  letter-spacing: 0.01em;
+  color: #cbd5f5;
+  text-align: center;
+}
+
 .nine-preview {
   display: flex;
   flex-direction: column;
