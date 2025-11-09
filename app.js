@@ -572,6 +572,7 @@
     hover: document.getElementById("nineCanvasHover"),
     active: document.getElementById("nineCanvasActive"),
   };
+  const nineSizeInfo = document.getElementById("nineSizeInfo");
 
   const nineFontProbe = document.createElement("span");
   nineFontProbe.style.position = "absolute";
@@ -597,6 +598,7 @@
 
   const nineImages = {};
   let nineImagesReady = false;
+  let nineLastDimensions = null;
   let currentNineState = "normal";
   const NINE_TEXT_FALLBACK = "Параметр";
 
@@ -988,6 +990,18 @@
 
     targetWidth = Math.ceil(targetWidth);
     targetHeight = Math.ceil(targetHeight);
+
+    const hasDimensions = targetWidth > 0 && targetHeight > 0;
+    if (nineSizeInfo) {
+      if (hasDimensions) {
+        nineLastDimensions = { width: targetWidth, height: targetHeight };
+        nineSizeInfo.textContent = `Размер изображения: ${targetWidth} × ${targetHeight} px`;
+      } else if (nineLastDimensions) {
+        nineSizeInfo.textContent = `Размер изображения: ${nineLastDimensions.width} × ${nineLastDimensions.height} px`;
+      } else {
+        nineSizeInfo.textContent = "Размер изображения: —";
+      }
+    }
 
     await ensureFontReady(nineFontProbe, fontFamily, fontSize);
 
