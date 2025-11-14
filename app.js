@@ -562,7 +562,8 @@
   // Nine-patch generator elements
   const nineTextInput = document.getElementById("nineText");
   const nineFileNameInput = document.getElementById("nineFileName");
-  const nineThemeSelect = document.getElementById("nineThemeSelect");
+  const nineThemeInput = document.getElementById("nineThemeInput");
+  const nineThemeDatalist = document.getElementById("nineThemeOptions");
   const nineFontSelect = document.getElementById("nineFontSelect");
   const nineCustomFontWrapper = document.getElementById("nineCustomFontWrapper");
   const nineCustomFontNameInput = document.getElementById("nineCustomFontName");
@@ -648,11 +649,8 @@
     return withoutSlashes;
   }
 
-  function ensureNineThemeValue(theme, available) {
+  function ensureNineThemeValue(theme) {
     const sanitised = sanitiseNineThemeName(theme);
-    if (sanitised && Array.isArray(available)) {
-      return available.includes(sanitised) ? sanitised : NINE_THEME_DEFAULT;
-    }
     return sanitised || NINE_THEME_DEFAULT;
   }
 
@@ -696,16 +694,20 @@
   }
 
   function updateNineThemeOptions(themes) {
-    if (!nineThemeSelect) return;
+    if (!nineThemeDatalist) return;
     const fragment = document.createDocumentFragment();
     themes.forEach((theme) => {
       const option = document.createElement("option");
       option.value = theme;
-      option.textContent = formatNineThemeLabel(theme);
+      const label = formatNineThemeLabel(theme) || theme;
+      if (label) {
+        option.label = label;
+        option.textContent = label;
+      }
       fragment.appendChild(option);
     });
-    nineThemeSelect.innerHTML = "";
-    nineThemeSelect.appendChild(fragment);
+    nineThemeDatalist.innerHTML = "";
+    nineThemeDatalist.appendChild(fragment);
   }
 
   async function themeHasRequiredAssets(theme) {
@@ -835,12 +837,21 @@
   }
 
   function setNineTheme(theme, options = {}) {
-    const available = options.availableThemes || nineAvailableThemes;
-    const safeTheme = ensureNineThemeValue(theme, available);
+    const safeTheme = ensureNineThemeValue(theme);
     const changed = nineConfig.theme !== safeTheme;
     nineConfig.theme = safeTheme;
-    if (!options.skipSelectSync && nineThemeSelect && nineThemeSelect.value !== safeTheme) {
-      nineThemeSelect.value = safeTheme;
+    if (
+      safeTheme &&
+      Array.isArray(nineAvailableThemes) &&
+      !nineAvailableThemes.includes(safeTheme)
+    ) {
+      nineAvailableThemes = normaliseNineThemeList([...nineAvailableThemes, safeTheme]);
+      if (!options.skipOptionsUpdate) {
+        updateNineThemeOptions(nineAvailableThemes);
+      }
+    }
+    if (!options.skipSelectSync && nineThemeInput && nineThemeInput.value !== safeTheme) {
+      nineThemeInput.value = safeTheme;
     }
     if (changed && !options.skipPersist) {
       persistNineConfig();
@@ -853,14 +864,14 @@
   }
 
   function handleNineThemeChange() {
-    if (!nineThemeSelect) return;
-    const { changed, promise } = setNineTheme(nineThemeSelect.value);
+    if (!nineThemeInput) return;
+    const { changed, promise } = setNineTheme(nineThemeInput.value);
     if (!changed || !promise || typeof promise.then !== "function") {
       return;
     }
-    nineThemeSelect.disabled = true;
+    nineThemeInput.disabled = true;
     const enableSelect = () => {
-      nineThemeSelect.disabled = false;
+      nineThemeInput.disabled = false;
     };
     if (typeof promise.finally === "function") {
       promise.finally(enableSelect);
@@ -1306,7 +1317,7 @@
   }
 
   function loadNineImages(theme) {
-    const targetTheme = ensureNineThemeValue(theme, nineAvailableThemes);
+    const targetTheme = ensureNineThemeValue(theme);
     nineImagesReady = false;
     const currentToken = ++nineImageLoadToken;
     nineImageSources = buildNineImageSources(targetTheme);
@@ -1330,8 +1341,8 @@
     if (!nineTextInput) return;
     loadNineConfigFromStorage();
 
-    if (nineThemeSelect) {
-      nineThemeSelect.disabled = true;
+    if (nineThemeInput) {
+      nineThemeInput.disabled = true;
     }
 
     try {
@@ -1349,7 +1360,6 @@
     const { theme: resolvedTheme, changed } = setNineTheme(nineConfig.theme, {
       skipReload: true,
       skipPersist: true,
-      availableThemes: nineAvailableThemes,
     });
     if (changed) {
       persistNineConfig();
@@ -1378,17 +1388,17 @@
     setNineActiveState(currentNineState);
 
     const loadPromise = loadNineImages(resolvedTheme);
-    if (nineThemeSelect && loadPromise && typeof loadPromise.then === "function") {
+    if (nineThemeInput && loadPromise && typeof loadPromise.then === "function") {
       const enableSelect = () => {
-        nineThemeSelect.disabled = false;
+        nineThemeInput.disabled = false;
       };
       if (typeof loadPromise.finally === "function") {
         loadPromise.finally(enableSelect);
       } else {
         loadPromise.then(enableSelect, enableSelect);
       }
-    } else if (nineThemeSelect) {
-      nineThemeSelect.disabled = false;
+    } else if (nineThemeInput) {
+      nineThemeInput.disabled = false;
     }
   }
 
@@ -1643,8 +1653,9 @@
   if (nineFileNameInput) {
     nineFileNameInput.addEventListener("input", updateNineFileName);
   }
-  if (nineThemeSelect) {
-    nineThemeSelect.addEventListener("change", handleNineThemeChange);
+  if (nineThemeInput) {
+    nineThemeInput.addEventListener("change", handleNineThemeChange);
+    nineThemeInput.addEventListener("blur", handleNineThemeChange);
   }
   if (nineFontSelect) {
     nineFontSelect.addEventListener("change", handleNineFontChange);

@@ -186,10 +186,10 @@
 
           <label class="field">
             <span>Стиль кнопки</span>
-            <select id="nineThemeSelect">
-              <option value="default" selected>По умолчанию</option>
-              <option value="blue">По умолчанию</option>
-            </select>
+            <input id="nineThemeInput" type="text" list="nineThemeOptions" placeholder="Например, default" value="default">
+            <datalist id="nineThemeOptions">
+              <option value="default" label="По умолчанию"></option>
+            </datalist>
           </label>
 
           <label class="field">
