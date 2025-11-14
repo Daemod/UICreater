@@ -562,6 +562,8 @@
   // Nine-patch generator elements
   const nineTextInput = document.getElementById("nineText");
   const nineFileNameInput = document.getElementById("nineFileName");
+  const nineThemeInput = document.getElementById("nineThemeInput");
+  const nineThemeDatalist = document.getElementById("nineThemeOptions");
   const nineFontSelect = document.getElementById("nineFontSelect");
   const nineCustomFontWrapper = document.getElementById("nineCustomFontWrapper");
   const nineCustomFontNameInput = document.getElementById("nineCustomFontName");
@@ -596,11 +598,17 @@
 
   const NINE_STATE_KEYS = ["normal", "hover", "active"];
   const NINE_STORAGE_KEY = "ui-creater-ninepatch-config-v1";
-  const nineImageSources = {
-    normal: "assets/paramUp.png",
-    hover: "assets/paramHover.png",
-    active: "assets/paramDown.png",
+  const NINE_THEME_DEFAULT = "default";
+  const NINE_ASSET_BASE_PATH = "assets";
+  const NINE_THEME_FILES = {
+    normal: "paramUp.png",
+    hover: "paramHover.png",
+    active: "paramDown.png",
   };
+
+  let nineAvailableThemes = [NINE_THEME_DEFAULT];
+  let nineImageSources = buildNineImageSources(NINE_THEME_DEFAULT);
+  let nineImageLoadToken = 0;
 
   const nineImages = {};
   let nineImagesReady = false;
@@ -614,6 +622,7 @@
   const nineConfig = {
     text: nineTextInput ? nineTextInput.value : NINE_TEXT_FALLBACK,
     fileName: nineFileNameInput ? nineFileNameInput.value.trim() : "",
+    theme: NINE_THEME_DEFAULT,
     fontFamily: "Inter",
     fontSize: Number(nineFontSizeInput?.value) || 20,
     alignHorizontal: nineAlignHorizontalSelect?.value || "center",
@@ -632,12 +641,252 @@
     };
   }
 
+  function sanitiseNineThemeName(name) {
+    const trimmed = (name || "").trim();
+    if (!trimmed) return "";
+    const withoutSlashes = trimmed.replace(/^[./\\]+/, "").replace(/[./\\]+$/, "");
+    if (!withoutSlashes || withoutSlashes.includes("..")) return "";
+    return withoutSlashes;
+  }
+
+  function ensureNineThemeValue(theme) {
+    const sanitised = sanitiseNineThemeName(theme);
+    return sanitised || NINE_THEME_DEFAULT;
+  }
+
+  function normaliseNineThemeList(list) {
+    const unique = new Set([NINE_THEME_DEFAULT]);
+    (Array.isArray(list) ? list : []).forEach((item) => {
+      const sanitised = sanitiseNineThemeName(item);
+      if (sanitised) {
+        unique.add(sanitised);
+      }
+    });
+    return Array.from(unique).sort((a, b) => {
+      if (a === NINE_THEME_DEFAULT) return -1;
+      if (b === NINE_THEME_DEFAULT) return 1;
+      return a.localeCompare(b, undefined, { sensitivity: "base" });
+    });
+  }
+
+  function formatNineThemeLabel(theme) {
+    if (theme === NINE_THEME_DEFAULT) {
+      return "По умолчанию";
+    }
+    if (!theme) return "";
+    const pretty = theme.replace(/[-_]+/g, " ");
+    return pretty.charAt(0).toUpperCase() + pretty.slice(1);
+  }
+
+  function buildNineImageUrl(theme, state) {
+    const fileName = NINE_THEME_FILES[state] || "";
+    const safeTheme = encodeURIComponent(theme || NINE_THEME_DEFAULT);
+    return `${NINE_ASSET_BASE_PATH}/${safeTheme}/${fileName}`;
+  }
+
+  function buildNineImageSources(theme) {
+    const safeTheme = ensureNineThemeValue(theme);
+    const sources = {};
+    NINE_STATE_KEYS.forEach((state) => {
+      sources[state] = buildNineImageUrl(safeTheme, state);
+    });
+    return sources;
+  }
+
+  function updateNineThemeOptions(themes) {
+    if (!nineThemeDatalist) return;
+    const fragment = document.createDocumentFragment();
+    themes.forEach((theme) => {
+      const option = document.createElement("option");
+      option.value = theme;
+      const label = formatNineThemeLabel(theme) || theme;
+      if (label) {
+        option.label = label;
+        option.textContent = label;
+      }
+      fragment.appendChild(option);
+    });
+    nineThemeDatalist.innerHTML = "";
+    nineThemeDatalist.appendChild(fragment);
+  }
+
+  async function themeHasRequiredAssets(theme) {
+    if (!theme) return false;
+    const url = buildNineImageUrl(theme, "normal");
+    try {
+      const headResponse = await fetch(url, { method: "HEAD", cache: "no-store" });
+      if (headResponse.ok) {
+        return true;
+      }
+      if (headResponse.status !== 405 && headResponse.status !== 403) {
+        return false;
+      }
+    } catch {
+      /* ignore */
+    }
+
+    try {
+      const getResponse = await fetch(url, { cache: "no-store" });
+      return getResponse.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async function filterNineThemesWithAssets(themes) {
+    const uniqueThemes = Array.from(new Set(Array.isArray(themes) ? themes : []));
+    if (!uniqueThemes.length) {
+      return [NINE_THEME_DEFAULT];
+    }
+    const checks = await Promise.all(uniqueThemes.map((theme) => {
+      if (theme === NINE_THEME_DEFAULT) {
+        return Promise.resolve(true);
+      }
+      return themeHasRequiredAssets(theme);
+    }));
+    const filtered = uniqueThemes.filter((_, index) => checks[index]);
+    if (filtered.length) {
+      return filtered;
+    }
+    return uniqueThemes;
+  }
+
+  async function fetchNineThemeListFromJson() {
+    const themes = [];
+    try {
+      const response = await fetch(`${NINE_ASSET_BASE_PATH}/themes.json`, { cache: "no-store" });
+      if (!response.ok) return themes;
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) return themes;
+      const payload = await response.json();
+      const entries = Array.isArray(payload?.themes) ? payload.themes : Array.isArray(payload) ? payload : [];
+      entries.forEach((entry) => {
+        const sanitised = sanitiseNineThemeName(entry);
+        if (sanitised) {
+          themes.push(sanitised);
+        }
+      });
+    } catch {
+      /* ignore */
+    }
+    return themes;
+  }
+
+  function extractThemesFromDirectoryListing(text) {
+    const results = [];
+    if (!text) return results;
+    try {
+      if (typeof DOMParser === "undefined") return results;
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(text, "text/html");
+      if (!doc) return results;
+      const anchors = Array.from(doc.querySelectorAll("a[href]"));
+      anchors.forEach((anchor) => {
+        const href = anchor.getAttribute("href") || "";
+        if (!href.endsWith("/")) return;
+        if (href === "../") return;
+        const sanitised = sanitiseNineThemeName(decodeURIComponent(href.replace(/\/+$/, "")));
+        if (sanitised) {
+          results.push(sanitised);
+        }
+      });
+    } catch {
+      /* ignore */
+    }
+    return results;
+  }
+
+  async function fetchNineThemeListFromDirectory() {
+    const themes = [];
+    try {
+      const response = await fetch(`${NINE_ASSET_BASE_PATH}/?t=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) return themes;
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const payload = await response.json();
+        const entries = Array.isArray(payload?.directories) ? payload.directories : Array.isArray(payload) ? payload : [];
+        entries.forEach((entry) => {
+          const sanitised = sanitiseNineThemeName(entry);
+          if (sanitised) {
+            themes.push(sanitised);
+          }
+        });
+        return themes;
+      }
+      const text = await response.text();
+      themes.push(...extractThemesFromDirectoryListing(text));
+    } catch {
+      /* ignore */
+    }
+    return themes;
+  }
+
+  async function discoverNineThemes() {
+    const results = [];
+    const jsonThemes = await fetchNineThemeListFromJson();
+    if (jsonThemes.length) {
+      results.push(...jsonThemes);
+    }
+    const directoryThemes = await fetchNineThemeListFromDirectory();
+    if (directoryThemes.length) {
+      results.push(...directoryThemes);
+    }
+    const normalised = normaliseNineThemeList(results);
+    const filtered = await filterNineThemesWithAssets(normalised);
+    return normaliseNineThemeList(filtered);
+  }
+
+  function setNineTheme(theme, options = {}) {
+    const safeTheme = ensureNineThemeValue(theme);
+    const changed = nineConfig.theme !== safeTheme;
+    nineConfig.theme = safeTheme;
+    if (
+      safeTheme &&
+      Array.isArray(nineAvailableThemes) &&
+      !nineAvailableThemes.includes(safeTheme)
+    ) {
+      nineAvailableThemes = normaliseNineThemeList([...nineAvailableThemes, safeTheme]);
+      if (!options.skipOptionsUpdate) {
+        updateNineThemeOptions(nineAvailableThemes);
+      }
+    }
+    if (!options.skipSelectSync && nineThemeInput && nineThemeInput.value !== safeTheme) {
+      nineThemeInput.value = safeTheme;
+    }
+    if (changed && !options.skipPersist) {
+      persistNineConfig();
+    }
+    let promise = Promise.resolve();
+    if (!options.skipReload && (changed || options.forceReload)) {
+      promise = loadNineImages(safeTheme);
+    }
+    return { theme: safeTheme, changed, promise };
+  }
+
+  function handleNineThemeChange() {
+    if (!nineThemeInput) return;
+    const { changed, promise } = setNineTheme(nineThemeInput.value);
+    if (!changed || !promise || typeof promise.then !== "function") {
+      return;
+    }
+    nineThemeInput.disabled = true;
+    const enableSelect = () => {
+      nineThemeInput.disabled = false;
+    };
+    if (typeof promise.finally === "function") {
+      promise.finally(enableSelect);
+    } else {
+      promise.then(enableSelect, enableSelect);
+    }
+  }
+
   function persistNineConfig() {
     if (typeof window === "undefined" || !window.localStorage) return;
     try {
       const payload = {
         text: nineConfig.text,
         fileName: (nineConfig.fileName || "").trim(),
+        theme: nineConfig.theme,
         fontFamily: nineConfig.fontFamily,
         fontSize: nineConfig.fontSize,
         alignHorizontal: nineConfig.alignHorizontal,
@@ -669,6 +918,12 @@
         nineConfig.fileName = trimmedFileName;
         if (nineFileNameInput) {
           nineFileNameInput.value = trimmedFileName;
+        }
+      }
+      if (typeof parsed.theme === "string") {
+        const storedTheme = sanitiseNineThemeName(parsed.theme);
+        if (storedTheme) {
+          nineConfig.theme = storedTheme;
         }
       }
       if (typeof parsed.fontSize === "number" && Number.isFinite(parsed.fontSize)) {
@@ -1061,7 +1316,11 @@
     }, "image/png");
   }
 
-  function loadNineImages() {
+  function loadNineImages(theme) {
+    const targetTheme = ensureNineThemeValue(theme);
+    nineImagesReady = false;
+    const currentToken = ++nineImageLoadToken;
+    nineImageSources = buildNineImageSources(targetTheme);
     const promises = NINE_STATE_KEYS.map((state) => new Promise((resolve) => {
       const image = new Image();
       image.onload = () => resolve(image);
@@ -1069,12 +1328,42 @@
       image.src = nineImageSources[state];
       nineImages[state] = image;
     }));
-    return Promise.all(promises);
+    return Promise.all(promises).then(() => {
+      if (currentToken !== nineImageLoadToken) {
+        return;
+      }
+      nineImagesReady = true;
+      renderNinePreviews();
+    });
   }
 
-  function initialiseNinePatch() {
+  async function initialiseNinePatch() {
     if (!nineTextInput) return;
     loadNineConfigFromStorage();
+
+    if (nineThemeInput) {
+      nineThemeInput.disabled = true;
+    }
+
+    try {
+      const discoveredThemes = await discoverNineThemes();
+      if (discoveredThemes.length) {
+        nineAvailableThemes = discoveredThemes;
+      } else {
+        nineAvailableThemes = [NINE_THEME_DEFAULT];
+      }
+    } catch {
+      nineAvailableThemes = [NINE_THEME_DEFAULT];
+    }
+
+    updateNineThemeOptions(nineAvailableThemes);
+    const { theme: resolvedTheme, changed } = setNineTheme(nineConfig.theme, {
+      skipReload: true,
+      skipPersist: true,
+    });
+    if (changed) {
+      persistNineConfig();
+    }
 
     if (nineFontSelect) {
       const options = Array.from(nineFontSelect.options || []);
@@ -1098,10 +1387,19 @@
     setNineFontFamily(nineConfig.fontFamily, { skipPersist: true, skipRender: true });
     setNineActiveState(currentNineState);
 
-    loadNineImages().then(() => {
-      nineImagesReady = true;
-      renderNinePreviews();
-    });
+    const loadPromise = loadNineImages(resolvedTheme);
+    if (nineThemeInput && loadPromise && typeof loadPromise.then === "function") {
+      const enableSelect = () => {
+        nineThemeInput.disabled = false;
+      };
+      if (typeof loadPromise.finally === "function") {
+        loadPromise.finally(enableSelect);
+      } else {
+        loadPromise.then(enableSelect, enableSelect);
+      }
+    } else if (nineThemeInput) {
+      nineThemeInput.disabled = false;
+    }
   }
 
   // Label generator elements
@@ -1354,6 +1652,10 @@
   }
   if (nineFileNameInput) {
     nineFileNameInput.addEventListener("input", updateNineFileName);
+  }
+  if (nineThemeInput) {
+    nineThemeInput.addEventListener("change", handleNineThemeChange);
+    nineThemeInput.addEventListener("blur", handleNineThemeChange);
   }
   if (nineFontSelect) {
     nineFontSelect.addEventListener("change", handleNineFontChange);
