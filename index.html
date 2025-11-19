@@ -16,6 +16,7 @@
         <button class="tool-tab active" type="button" data-tool-target="button">Генератор кнопок</button>
         <button class="tool-tab" type="button" data-tool-target="ninepatch">Nine-patch кнопки</button>
         <button class="tool-tab" type="button" data-tool-target="label">Генератор надписей</button>
+        <button class="tool-tab" type="button" data-tool-target="localization">Локализация</button>
       </nav>
     </header>
 
@@ -408,8 +409,69 @@
         </div>
       </section>
     </section>
+
+    <section class="app hidden" data-tool="localization">
+      <section class="panel controls localization-controls">
+        <h1>Редактор локализации</h1>
+        <form class="control-form" autocomplete="off">
+          <div class="field">
+            <span>Файл локализации</span>
+            <div class="file-row">
+              <input id="localizationFileInput" type="file" accept=".swf,.bin,.dat,.zlib" aria-label="Выбрать файл локализации">
+              <button type="button" class="ghost-btn" id="localizationLoadDefault">Открыть Lang/langData.swf</button>
+            </div>
+            <p class="note">Файл должен быть в формате zlib и содержать пары key/value, закодированные через readUTF.</p>
+          </div>
+
+          <label class="field">
+            <span>Поиск</span>
+            <input id="localizationSearch" type="search" placeholder="Введите ключ или текст перевода">
+          </label>
+
+          <div class="field two-columns">
+            <label>
+              <span>Ключ</span>
+              <input id="localizationKey" type="text" placeholder="Например, menu.start">
+            </label>
+            <label>
+              <span>Значение</span>
+              <textarea id="localizationValue" rows="3" placeholder="Текст перевода"></textarea>
+            </label>
+          </div>
+
+          <div class="localization-actions-row">
+            <button type="button" class="save-btn" id="localizationSave">Добавить или обновить</button>
+            <button type="button" class="ghost-btn" id="localizationClear">Очистить форму</button>
+            <button type="button" class="save-btn" id="localizationDownload">Скачать langData.swf</button>
+          </div>
+
+          <div class="localization-summary">
+            <span class="pill">Всего ключей: <strong id="localizationCount">0</strong></span>
+            <span class="pill">В фильтре: <strong id="localizationFiltered">0</strong></span>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel localization-panel">
+        <div class="preview-header localization-header">
+          <div>
+            <div class="section-label">Список переводов</div>
+            <div id="localizationStatus" class="localization-status">Файл ещё не загружен</div>
+          </div>
+        </div>
+        <div class="localization-table">
+          <div class="localization-table-head">
+            <span>Ключ</span>
+            <span>Значение</span>
+            <span class="actions-col">Действия</span>
+          </div>
+          <div id="localizationList" class="localization-list" role="list"></div>
+        </div>
+      </section>
+    </section>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/dom-to-image-more@2.8.0/dist/dom-to-image-more.min.js" integrity="sha256-SWiKkXQIRpzbpHAKgzvEE/LefY3As3O7OH79qVhxRV4=" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js" integrity="sha256-Dc4s46HoPazTA/gkGEXUXMaLLfi5yRvCNrI6VsgGAa0=" crossorigin="anonymous"></script>
   <script src="app.js"></script>
 </body>
 </html>
