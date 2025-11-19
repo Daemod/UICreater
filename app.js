@@ -260,6 +260,311 @@
     return safeBase + "-" + safeSuffix + ".png";
   }
 
+  // Localization editor
+  const LOCALIZATION_DEFAULT_PATH = "Lang/langData.swf";
+  const localizationFileInput = document.getElementById("localizationFileInput");
+  const localizationLoadDefaultButton = document.getElementById("localizationLoadDefault");
+  const localizationSearchInput = document.getElementById("localizationSearch");
+  const localizationKeyInput = document.getElementById("localizationKey");
+  const localizationValueInput = document.getElementById("localizationValue");
+  const localizationSaveButton = document.getElementById("localizationSave");
+  const localizationClearButton = document.getElementById("localizationClear");
+  const localizationDownloadButton = document.getElementById("localizationDownload");
+  const localizationStatus = document.getElementById("localizationStatus");
+  const localizationCount = document.getElementById("localizationCount");
+  const localizationFilteredCount = document.getElementById("localizationFiltered");
+  const localizationList = document.getElementById("localizationList");
+
+  const localizationState = {
+    entries: new Map(),
+    filter: "",
+    selectedKey: "",
+    sourceName: "langData.swf",
+  };
+
+  const utfDecoder = new TextDecoder("utf-8");
+  const utfEncoder = new TextEncoder();
+
+  function setLocalizationStatus(message, tone = "muted") {
+    if (!localizationStatus) return;
+    localizationStatus.textContent = message;
+    localizationStatus.classList.remove("success", "error");
+    if (tone === "success") {
+      localizationStatus.classList.add("success");
+    } else if (tone === "error") {
+      localizationStatus.classList.add("error");
+    }
+  }
+
+  function ensurePakoReady() {
+    return typeof window !== "undefined" && window.pako && typeof window.pako.inflate === "function";
+  }
+
+  function parseLocalizationBuffer(buffer) {
+    if (!ensurePakoReady()) {
+      throw new Error("Библиотека pako не загружена");
+    }
+
+    const decompressed = window.pako.inflate(new Uint8Array(buffer));
+    const view = new DataView(
+      decompressed.buffer,
+      decompressed.byteOffset,
+      decompressed.byteLength
+    );
+    const result = new Map();
+    let offset = 0;
+
+    while (offset < view.byteLength) {
+      if (offset + 2 > view.byteLength) {
+        throw new Error("Файл повреждён: не хватает данных для длины ключа");
+      }
+      const keyLength = view.getUint16(offset);
+      offset += 2;
+      if (offset + keyLength > view.byteLength) {
+        throw new Error("Файл повреждён: неполный ключ");
+      }
+      const key = utfDecoder.decode(decompressed.subarray(offset, offset + keyLength));
+      offset += keyLength;
+
+      if (offset + 2 > view.byteLength) {
+        throw new Error("Файл повреждён: не хватает данных для длины значения");
+      }
+      const valueLength = view.getUint16(offset);
+      offset += 2;
+      if (offset + valueLength > view.byteLength) {
+        throw new Error("Файл повреждён: неполное значение");
+      }
+      const value = utfDecoder.decode(
+        decompressed.subarray(offset, offset + valueLength)
+      );
+      offset += valueLength;
+
+      if (key) {
+        result.set(key, value);
+      }
+    }
+
+    return result;
+  }
+
+  function buildLocalizationBlob(entriesMap) {
+    if (!ensurePakoReady()) {
+      throw new Error("Библиотека pako не загружена");
+    }
+
+    const encodedEntries = [];
+    let totalLength = 0;
+
+    entriesMap.forEach((value, key) => {
+      const safeKey = (key || "").trim();
+      if (!safeKey) return;
+      const keyBytes = utfEncoder.encode(safeKey);
+      const valueBytes = utfEncoder.encode(String(value ?? ""));
+      if (keyBytes.length > 65535 || valueBytes.length > 65535) {
+        throw new Error("Ключи и значения должны быть короче 65535 байт");
+      }
+      totalLength += 2 + keyBytes.length + 2 + valueBytes.length;
+      encodedEntries.push({ keyBytes, valueBytes });
+    });
+
+    const payload = new Uint8Array(totalLength);
+    const view = new DataView(payload.buffer);
+    let offset = 0;
+
+    encodedEntries.forEach(({ keyBytes, valueBytes }) => {
+      view.setUint16(offset, keyBytes.length);
+      offset += 2;
+      payload.set(keyBytes, offset);
+      offset += keyBytes.length;
+      view.setUint16(offset, valueBytes.length);
+      offset += 2;
+      payload.set(valueBytes, offset);
+      offset += valueBytes.length;
+    });
+
+    const compressed = window.pako.deflate(payload);
+    return new Blob([compressed], { type: "application/octet-stream" });
+  }
+
+  function updateLocalizationCounters(filteredLength) {
+    if (localizationCount) {
+      localizationCount.textContent = localizationState.entries.size.toString();
+    }
+    if (localizationFilteredCount) {
+      localizationFilteredCount.textContent = filteredLength.toString();
+    }
+  }
+
+  function renderLocalizationList() {
+    if (!localizationList) return;
+    const filter = (localizationState.filter || "").trim().toLowerCase();
+    const entries = Array.from(localizationState.entries.entries());
+    const filtered = filter
+      ? entries.filter(([key, value]) =>
+          key.toLowerCase().includes(filter) || String(value).toLowerCase().includes(filter)
+        )
+      : entries;
+
+    filtered.sort((a, b) => a[0].localeCompare(b[0]));
+    localizationList.innerHTML = "";
+
+    if (!filtered.length) {
+      const empty = document.createElement("div");
+      empty.className = "localization-empty";
+      empty.textContent = localizationState.entries.size
+        ? "Не найдено записей по текущему фильтру"
+        : "Загрузите langData.swf, чтобы начать редактирование";
+      localizationList.appendChild(empty);
+      updateLocalizationCounters(filtered.length);
+      return;
+    }
+
+    filtered.forEach(([key, value]) => {
+      const row = document.createElement("div");
+      row.className = "localization-row";
+
+      const keyCell = document.createElement("div");
+      keyCell.className = "localization-key";
+      keyCell.textContent = key;
+      row.appendChild(keyCell);
+
+      const valueCell = document.createElement("div");
+      valueCell.className = "localization-value";
+      valueCell.textContent = value;
+      row.appendChild(valueCell);
+
+      const actions = document.createElement("div");
+      actions.className = "localization-row-actions";
+
+      const editButton = document.createElement("button");
+      editButton.type = "button";
+      editButton.className = "ghost-btn";
+      editButton.textContent = "Редактировать";
+      editButton.addEventListener("click", () => {
+        localizationState.selectedKey = key;
+        if (localizationKeyInput) localizationKeyInput.value = key;
+        if (localizationValueInput) localizationValueInput.value = value;
+      });
+      actions.appendChild(editButton);
+
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "ghost-btn";
+      deleteButton.textContent = "Удалить";
+      deleteButton.addEventListener("click", () => {
+        const confirmed = window.confirm("Удалить перевод " + key + "?");
+        if (!confirmed) return;
+        localizationState.entries.delete(key);
+        if (localizationState.selectedKey === key) {
+          localizationState.selectedKey = "";
+          if (localizationKeyInput) localizationKeyInput.value = "";
+          if (localizationValueInput) localizationValueInput.value = "";
+        }
+        renderLocalizationList();
+        setLocalizationStatus("Ключ удалён: " + key, "success");
+      });
+      actions.appendChild(deleteButton);
+
+      row.appendChild(actions);
+      localizationList.appendChild(row);
+    });
+
+    updateLocalizationCounters(filtered.length);
+  }
+
+  function applyLocalizationFilter() {
+    localizationState.filter = localizationSearchInput?.value || "";
+    renderLocalizationList();
+  }
+
+  function setLocalizationEntries(entries, sourceName) {
+    localizationState.entries = new Map(entries);
+    localizationState.sourceName = sourceName || localizationState.sourceName;
+    renderLocalizationList();
+    setLocalizationStatus(
+      `Загружено ${localizationState.entries.size} записей из ${localizationState.sourceName}`,
+      "success"
+    );
+  }
+
+  async function loadLocalizationFromBuffer(buffer, sourceName) {
+    try {
+      const entries = parseLocalizationBuffer(buffer);
+      setLocalizationEntries(entries, sourceName);
+    } catch (error) {
+      setLocalizationStatus("Не удалось разобрать файл: " + error.message, "error");
+    }
+  }
+
+  async function loadLocalizationFromUrl(url, sourceName = "langData.swf") {
+    try {
+      setLocalizationStatus("Загружаем файл локализации...", "muted");
+      const response = await fetch(url + "?t=" + Date.now(), { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("код ответа " + response.status);
+      }
+      const buffer = await response.arrayBuffer();
+      await loadLocalizationFromBuffer(buffer, sourceName);
+    } catch (error) {
+      setLocalizationStatus("Не удалось загрузить langData.swf: " + error.message, "error");
+    }
+  }
+
+  function handleLocalizationFile(event) {
+    const file = event.target?.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (result instanceof ArrayBuffer) {
+        loadLocalizationFromBuffer(result, file.name);
+      }
+    };
+    reader.onerror = () => {
+      setLocalizationStatus("Ошибка чтения файла: " + reader.error?.message, "error");
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function handleLocalizationSave() {
+    const key = (localizationKeyInput?.value || "").trim();
+    if (!key) {
+      setLocalizationStatus("Введите ключ перевода", "error");
+      return;
+    }
+    const value = localizationValueInput?.value ?? "";
+    localizationState.entries.set(key, value);
+    localizationState.selectedKey = key;
+    renderLocalizationList();
+    setLocalizationStatus("Перевод сохранён: " + key, "success");
+  }
+
+  function clearLocalizationForm() {
+    if (localizationKeyInput) localizationKeyInput.value = "";
+    if (localizationValueInput) localizationValueInput.value = "";
+    localizationState.selectedKey = "";
+    setLocalizationStatus("Форма очищена", "muted");
+  }
+
+  function downloadLocalizationFile() {
+    if (!localizationState.entries.size) {
+      setLocalizationStatus("Нет данных для сохранения", "error");
+      return;
+    }
+
+    try {
+      const blob = buildLocalizationBlob(localizationState.entries);
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = localizationState.sourceName || "langData.swf";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1500);
+      setLocalizationStatus("Файл сохранён: " + link.download, "success");
+    } catch (error) {
+      setLocalizationStatus("Не удалось собрать файл: " + error.message, "error");
+    }
+  }
+
   // Button generator elements
   const previewButton = document.getElementById("previewButton");
   const previewLabel = previewButton?.querySelector('[data-role="preview-label"]');
@@ -1542,6 +1847,27 @@
   }
 
   // Event bindings
+  if (localizationLoadDefaultButton) {
+    localizationLoadDefaultButton.addEventListener("click", () =>
+      loadLocalizationFromUrl(LOCALIZATION_DEFAULT_PATH, "langData.swf")
+    );
+  }
+  if (localizationFileInput) {
+    localizationFileInput.addEventListener("change", handleLocalizationFile);
+  }
+  if (localizationSearchInput) {
+    localizationSearchInput.addEventListener("input", applyLocalizationFilter);
+  }
+  if (localizationSaveButton) {
+    localizationSaveButton.addEventListener("click", handleLocalizationSave);
+  }
+  if (localizationClearButton) {
+    localizationClearButton.addEventListener("click", clearLocalizationForm);
+  }
+  if (localizationDownloadButton) {
+    localizationDownloadButton.addEventListener("click", downloadLocalizationFile);
+  }
+
   if (buttonTextInput) {
     buttonTextInput.addEventListener("input", updateButtonText);
   }
@@ -1716,6 +2042,10 @@
 
   initialiseNinePatch();
 
+  if (localizationList) {
+    loadLocalizationFromUrl(LOCALIZATION_DEFAULT_PATH, "langData.swf");
+  }
+
   function activateTool(toolName) {
     const safeName = toolName || "button";
     toolTabs.forEach((tab) => {
@@ -1732,6 +2062,8 @@
       nineTextInput.focus({ preventScroll: true });
     } else if (safeName === "label" && labelTextInput) {
       labelTextInput.focus({ preventScroll: true });
+    } else if (safeName === "localization" && localizationSearchInput) {
+      localizationSearchInput.focus({ preventScroll: true });
     }
   }
 
