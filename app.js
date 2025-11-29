@@ -401,8 +401,8 @@
     const entries = Array.from(localizationState.entries.entries());
     const filtered = filter
       ? entries.filter(([key, value]) =>
-          key.toLowerCase().includes(filter) || String(value).toLowerCase().includes(filter)
-        )
+        key.toLowerCase().includes(filter) || String(value).toLowerCase().includes(filter)
+      )
       : entries;
 
     filtered.sort((a, b) => a[0].localeCompare(b[0]));
